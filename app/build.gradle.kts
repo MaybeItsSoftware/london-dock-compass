@@ -2,6 +2,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.kotlin.serialization)
 }
 
 android {
@@ -34,6 +35,7 @@ android {
 }
 
 dependencies {
+    implementation(libs.kotlinx.serialization.json)
     implementation(libs.play.services.wearable)
     implementation(platform(libs.compose.bom))
     implementation(libs.ui)
@@ -46,11 +48,14 @@ dependencies {
     implementation(libs.core.splashscreen)
     implementation(libs.tiles)
     implementation(libs.tiles.material)
+    implementation(libs.google.play.services.location)
     implementation(libs.tiles.tooling.preview)
+    implementation(libs.davidmoten.geo)
     implementation(libs.horologist.compose.tools)
     implementation(libs.horologist.tiles)
     implementation(libs.watchface.complications.data.source.ktx)
     implementation(libs.androidx.material3)
+    implementation(libs.play.services.maps)
     androidTestImplementation(platform(libs.compose.bom))
     androidTestImplementation(libs.ui.test.junit4)
     debugImplementation(libs.ui.tooling)
