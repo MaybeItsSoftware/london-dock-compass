@@ -12,18 +12,24 @@ import androidx.compose.ui.Modifier
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Text
+import androidx.wear.compose.material.Button
 import android.Manifest
+import android.content.Context
 import android.content.pm.PackageManager
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
-import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
 import com.github.davidmoten.geo.GeoHash
 import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
 import android.location.Location
+import androidx.compose.foundation.Image
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import kotlinx.coroutines.delay
@@ -31,6 +37,15 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.io.InputStream
 import uk.co.maybeitsadam.cycles.R
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+
 
 @Serializable
 data class Station(
@@ -52,33 +67,129 @@ data class Station(
 )
 
 data class NearbyStationCompass(
-    val station: Station,
+    val station: Station?,
     var distanceInMeters: Int,
-    var bearing: Float
+    var cycle_bearing: Float
 )
 
-class MainActivity : ComponentActivity() {
+fun Color.inverse(): Color {
+    return Color(
+        red = 1f - this.red,
+        green = 1f - this.green,
+        blue = 1f - this.blue,
+        alpha = this.alpha
+    )
+}
+
+class MainActivity : ComponentActivity(), SensorEventListener {
+
+    private lateinit var sensorManager: SensorManager
+    private var accelerometer: Sensor? = null
+    private var magnetometer: Sensor? = null
+
+    private var gravity: FloatArray? = null
+    private var geomagnetic: FloatArray? = null
+
+    private val bearingState = mutableFloatStateOf(0f)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
-
         super.onCreate(savedInstanceState)
+
+        sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+        magnetometer = sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)
 
         setTheme(android.R.style.Theme_DeviceDefault)
 
         setContent {
-//            WearApp("Adam")
-            Surface(modifier = Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colors.background)) {
-                LocationPermissionHandler()
+            val appColours = MaterialTheme.colors.copy(
+                background = Color.White,
+                onBackground = Color(0xFF0009AB).inverse()
+
+            )
+            MaterialTheme(colors = appColours) {
+                Box(modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colors.background)
+                ) {
+
+
+                    LocationPermissionHandler(bearingState.floatValue)
+                }
             }
         }
     }
+
+    override fun onResume() {
+        super.onResume()
+        // Start listening to sensor updates when the activity is in the foreground.
+        accelerometer?.also { sensor ->
+            sensorManager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_UI)
+        }
+        magnetometer?.also { sensor ->
+            sensorManager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_UI)
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        sensorManager.unregisterListener(this)
+    }
+
+    override fun onSensorChanged(event: SensorEvent?) {
+        if (event?.sensor?.type == Sensor.TYPE_ACCELEROMETER) {
+            gravity = lowPass(event.values.clone(), gravity)
+        }
+        if (event?.sensor?.type == Sensor.TYPE_MAGNETIC_FIELD) {
+            geomagnetic = lowPass(event.values.clone(), geomagnetic)
+        }
+
+        if (gravity != null && geomagnetic != null) {
+            val rotationMatrix = FloatArray(9)
+            val success = SensorManager.getRotationMatrix(rotationMatrix, null, gravity, geomagnetic)
+
+            if (success) {
+                val remappedRotationMatrix = FloatArray(9)
+                SensorManager.remapCoordinateSystem(
+                    rotationMatrix,
+                    SensorManager.AXIS_Y,
+                    SensorManager.AXIS_MINUS_X,
+                    remappedRotationMatrix
+                )
+
+                val orientation = FloatArray(3)
+                SensorManager.getOrientation(remappedRotationMatrix, orientation)
+
+                val bearingInDegrees = Math.toDegrees(orientation[0].toDouble()).toFloat()
+
+                if (kotlin.math.abs(bearingInDegrees - bearingState.floatValue) > 1) {
+                    bearingState.floatValue = (bearingInDegrees + 360) % 360
+                }
+            }
+        }
+    }
+
+    private fun lowPass(input: FloatArray, output: FloatArray?): FloatArray {
+        if (output == null) return input
+        for (i in input.indices) {
+            output[i] = output[i] + 0.1f * (input[i] - output[i])
+        }
+        return output
+    }
+
+    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+}
+
+private fun loadStations(context: Context): Map<String, List<Station>> {
+    val inputStream: InputStream = context.resources.openRawResource(R.raw.docklocations)
+    return Json.decodeFromString(
+        inputStream.bufferedReader().use { it.readText() }
+    )
 }
 
 @Composable
-fun LocationPermissionHandler() {
+fun LocationPermissionHandler(bearing: Float) {
     var hasLocationPermission by remember {
         mutableStateOf(false)
     }
@@ -93,7 +204,7 @@ fun LocationPermissionHandler() {
     }
 
     if (hasLocationPermission) {
-        LocationPermissionGiven()
+        LocationPermissionGiven(bearing)
     } else {
         PermissionDeniedScreen(
             onRequestPermission = {
@@ -104,23 +215,22 @@ fun LocationPermissionHandler() {
 }
 
 @Composable
-fun LocationPermissionGiven() {
+fun LocationPermissionGiven(bearing: Float) {
+
     val context = LocalContext.current
 
-    val inputStream: InputStream = context.resources.openRawResource(R.raw.docklocations)
-
-    val stations:Map<String, List<Station>> = Json.decodeFromString(
-        inputStream.bufferedReader().use {
-            it.readText()
-        }
-    )
+    val stations: Map<String, List<Station>> = remember { loadStations(context) }
 
     val fusedLocationClient = remember {
         LocationServices.getFusedLocationProviderClient(context)
     }
 
     var nearestStation by remember {
-        mutableStateOf<NearbyStationCompass?>(null)
+        mutableStateOf(NearbyStationCompass(
+            station = null,
+            distanceInMeters = 0,
+            cycle_bearing = 0f)
+        )
     }
 
     var locationInfo by remember {
@@ -217,56 +327,64 @@ fun LocationPermissionGiven() {
             val stationLocation: Location = Location("station").apply { latitude = station.lat; longitude = station.long }
 
             val distance = position.distanceTo(stationLocation).toInt()
-            val bearing = position.bearingTo(stationLocation)
+            val cycleBearing = position.bearingTo(stationLocation)
 
-            NearbyStationCompass(station, distance, bearing)
+            NearbyStationCompass(station, distance, cycleBearing)
         }.minBy{ it.distanceInMeters }
     }
 
     // currently only doing on app launch, should be more frequent
     LaunchedEffect(key1 = Unit) {
         while (true) {
-            delay(5000)
+            delay(4000)
             fetchLocation()
+            currentGeoHash?.let {
+                nearestStation = findNearestStationTo(position!!, it)
+            }
         }
     }
 
-    // whenever the geohash changes, find new candidates
-    // MAKE THIS REGULAR LOCATION
-    LaunchedEffect(currentGeoHash) {
-        currentGeoHash?.let {
-            nearestStation = findNearestStationTo(position!!, it)
-        }
-    }
-
-    Column (
-        modifier = Modifier.fillMaxSize().background(MaterialTheme.colors.background),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+    Box(
+        contentAlignment = Alignment.Center
     ) {
-        position?.let {
-            Text(position.toString())
-        } ?: run {
-            Text(locationInfo)
-        }
-        Spacer(modifier = Modifier.height(10.dp))
-        currentGeoHash?.let {
-            Text(it)
-        }
-        Spacer(modifier = Modifier.height(10.dp))
-        nearestStation?.let {
-            Text(it.station.name)
-            Text(it.distanceInMeters.toString())
-            Text(it.bearing.toString())
-            Spacer( modifier = Modifier.height(5.dp))
+        Image(
+            painter = painterResource(id = R.drawable.arrow),
+            contentDescription = "Arrow",
+            modifier = Modifier
+                .rotate(180f - bearing + nearestStation.cycle_bearing)
+                .fillMaxSize(fraction = 0.9f),
+        )
+        Column(
+            modifier = Modifier
+                .fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            position?.let {
+                Text(position.toString())
+            } ?: run {
+                Text(locationInfo)
+            }
+            Spacer(modifier = Modifier.height(10.dp))
+            currentGeoHash?.let {
+                Text(it)
+            }
+            Spacer(modifier = Modifier.height(10.dp))
+            nearestStation.station?.let { Text(it.name) }
+            Text(nearestStation.distanceInMeters.toString())
+            Text(nearestStation.cycle_bearing.toString())
+            Spacer(modifier = Modifier.height(5.dp))
         }
     }
 }
 
 @Composable
 fun PermissionDeniedScreen (onRequestPermission: () -> Unit) {
-    Column (
-        modifier = Modifier.fillMaxSize().background(MaterialTheme.colors.background).padding(16.dp),
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colors.background)
+            .padding(16.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -277,5 +395,3 @@ fun PermissionDeniedScreen (onRequestPermission: () -> Unit) {
         }
     }
 }
-
-
