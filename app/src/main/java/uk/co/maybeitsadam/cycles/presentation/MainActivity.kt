@@ -1,18 +1,5 @@
 package uk.co.maybeitsadam.cycles.presentation
 
-import android.os.Bundle
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
-import androidx.wear.compose.material.MaterialTheme
-import androidx.wear.compose.material.Text
-import androidx.wear.compose.material.Button
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
@@ -20,32 +7,69 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.*
-import androidx.compose.runtime.*
-import androidx.compose.ui.platform.LocalContext
-import com.github.davidmoten.geo.GeoHash
-import androidx.compose.ui.unit.dp
-import androidx.core.app.ActivityCompat
 import android.location.Location
+import android.os.Bundle
+import android.os.Looper
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
-import com.google.android.gms.location.LocationServices
-import com.google.android.gms.location.Priority
-import kotlinx.coroutines.delay
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
-import java.io.InputStream
-import uk.co.maybeitsadam.cycles.R
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
-
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.core.app.ActivityCompat
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.wear.compose.material.Button
+import androidx.wear.compose.material.ButtonDefaults
+import androidx.wear.compose.material.HorizontalPageIndicator
+import androidx.wear.compose.material.MaterialTheme
+import androidx.wear.compose.material.PageIndicatorState
+import androidx.wear.compose.material.Scaffold
+import androidx.wear.compose.material.Text
+import androidx.wear.compose.material.TimeText
+import com.github.davidmoten.geo.GeoHash
+import com.google.android.gms.location.LocationCallback
+import com.google.android.gms.location.LocationRequest
+import com.google.android.gms.location.LocationResult
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import uk.co.maybeitsadam.cycles.R
+import uk.co.maybeitsadam.cycles.data.BikePointRepository
+import uk.co.maybeitsadam.cycles.data.BikePointStatus
+import java.io.InputStream
+import kotlin.math.roundToInt
 
 @Serializable
 data class Station(
@@ -58,64 +82,45 @@ data class Station(
     val locked: Boolean,
     val installDate: Long?,
     val removalDate: Long? = null,
-    val temporary: Boolean,
-    var nbBikes: Int? = null,
-    var nbStandardBikes: Int? = null,
-    var nbEBikes: Int? = null,
-    var nbEmptyDocks: Int? = null,
-    var nbDocks: Int? = null
+    val temporary: Boolean
 )
 
 data class NearbyStationCompass(
-    val station: Station?,
-    var distanceInMeters: Int,
-    var cycle_bearing: Float
+    val station: Station,
+    val distanceInMeters: Int,
+    val cycleBearing: Float
 )
-
-fun Color.inverse(): Color {
-    return Color(
-        red = 1f - this.red,
-        green = 1f - this.green,
-        blue = 1f - this.blue,
-        alpha = this.alpha
-    )
-}
 
 class MainActivity : ComponentActivity(), SensorEventListener {
 
     private lateinit var sensorManager: SensorManager
-    private var accelerometer: Sensor? = null
-    private var magnetometer: Sensor? = null
+    private var rotationVectorSensor: Sensor? = null
 
-    private var gravity: FloatArray? = null
-    private var geomagnetic: FloatArray? = null
+    // compassBearing is the direction the top of the watch is pointing (0=North, clockwise)
+    private val compassBearing = mutableFloatStateOf(0f)
 
-    private val bearingState = mutableFloatStateOf(0f)
+    private val rotationMatrix = FloatArray(9)
+    private val orientationAngles = FloatArray(3)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
 
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
-        accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-        magnetometer = sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)
+        // TYPE_ROTATION_VECTOR fuses accel + gyro + magnetometer for a stable heading
+        rotationVectorSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
 
         setTheme(android.R.style.Theme_DeviceDefault)
 
         setContent {
-            val appColours = MaterialTheme.colors.copy(
-                background = Color.White,
-                onBackground = Color(0xFF0009AB).inverse()
-
+            val appColors = MaterialTheme.colors.copy(
+                background = Color.Black,
+                onBackground = Color.White,
+                primary = Color(0xFFDC241F) // Santander red
             )
-            MaterialTheme(colors = appColours) {
-                Box(modifier = Modifier
-                    .fillMaxSize()
-                    .background(MaterialTheme.colors.background)
-                ) {
-
-
-                    LocationPermissionHandler(bearingState.floatValue)
+            MaterialTheme(colors = appColors) {
+                Scaffold(timeText = { TimeText() }) {
+                    DockFinderApp(compassBearing.floatValue)
                 }
             }
         }
@@ -123,12 +128,8 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
     override fun onResume() {
         super.onResume()
-        // Start listening to sensor updates when the activity is in the foreground.
-        accelerometer?.also { sensor ->
-            sensorManager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_UI)
-        }
-        magnetometer?.also { sensor ->
-            sensorManager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_UI)
+        rotationVectorSensor?.let {
+            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
         }
     }
 
@@ -138,260 +139,288 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     }
 
     override fun onSensorChanged(event: SensorEvent?) {
-        if (event?.sensor?.type == Sensor.TYPE_ACCELEROMETER) {
-            gravity = lowPass(event.values.clone(), gravity)
-        }
-        if (event?.sensor?.type == Sensor.TYPE_MAGNETIC_FIELD) {
-            geomagnetic = lowPass(event.values.clone(), geomagnetic)
-        }
+        if (event?.sensor?.type != Sensor.TYPE_ROTATION_VECTOR) return
 
-        if (gravity != null && geomagnetic != null) {
-            val rotationMatrix = FloatArray(9)
-            val success = SensorManager.getRotationMatrix(rotationMatrix, null, gravity, geomagnetic)
+        SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
+        SensorManager.getOrientation(rotationMatrix, orientationAngles)
 
-            if (success) {
-                val remappedRotationMatrix = FloatArray(9)
-                SensorManager.remapCoordinateSystem(
-                    rotationMatrix,
-                    SensorManager.AXIS_Y,
-                    SensorManager.AXIS_MINUS_X,
-                    remappedRotationMatrix
-                )
+        // orientationAngles[0] = azimuth: angle between device Y-axis and North, clockwise
+        val azimuthDeg = Math.toDegrees(orientationAngles[0].toDouble()).toFloat()
+        val newBearing = (azimuthDeg + 360f) % 360f
 
-                val orientation = FloatArray(3)
-                SensorManager.getOrientation(remappedRotationMatrix, orientation)
-
-                val bearingInDegrees = Math.toDegrees(orientation[0].toDouble()).toFloat()
-
-                if (kotlin.math.abs(bearingInDegrees - bearingState.floatValue) > 1) {
-                    bearingState.floatValue = (bearingInDegrees + 360) % 360
-                }
-            }
-        }
-    }
-
-    private fun lowPass(input: FloatArray, output: FloatArray?): FloatArray {
-        if (output == null) return input
-        for (i in input.indices) {
-            output[i] = output[i] + 0.1f * (input[i] - output[i])
-        }
-        return output
+        // Smooth using angular lerp to avoid jitter without sluggish response
+        compassBearing.floatValue = lerpAngle(compassBearing.floatValue, newBearing, 0.2f)
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
 }
 
+/**
+ * Interpolates between two compass bearings, correctly handling the 0°/360° wrap.
+ */
+private fun lerpAngle(current: Float, target: Float, factor: Float): Float {
+    val diff = ((target - current + 540f) % 360f) - 180f
+    return (current + diff * factor + 360f) % 360f
+}
+
+private val jsonParser = Json { ignoreUnknownKeys = true }
+
 private fun loadStations(context: Context): Map<String, List<Station>> {
     val inputStream: InputStream = context.resources.openRawResource(R.raw.docklocations)
-    return Json.decodeFromString(
-        inputStream.bufferedReader().use { it.readText() }
-    )
+    return jsonParser.decodeFromString(inputStream.bufferedReader().use { it.readText() })
 }
 
 @Composable
-fun LocationPermissionHandler(bearing: Float) {
-    var hasLocationPermission by remember {
-        mutableStateOf(false)
+fun DockFinderApp(bearing: Float) {
+    val context = LocalContext.current
+
+    // Check if permission is already granted so we don't flash the permission screen
+    var hasPermission by remember {
+        mutableStateOf(
+            ActivityCompat.checkSelfPermission(
+                context, Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+        )
     }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission(),
-        onResult = { isGranted -> hasLocationPermission = isGranted }
+        onResult = { granted -> hasPermission = granted }
     )
 
-    LaunchedEffect(key1 = true) {
-        permissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+    LaunchedEffect(Unit) {
+        if (!hasPermission) {
+            permissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+        }
     }
 
-    if (hasLocationPermission) {
-        LocationPermissionGiven(bearing)
+    // Load stations on a background thread so the main thread isn't blocked during first composition
+    var stations by remember { mutableStateOf<Map<String, List<Station>>?>(null) }
+    LaunchedEffect(Unit) {
+        stations = try {
+            withContext(Dispatchers.Default) { loadStations(context) }
+        } catch (e: Exception) {
+            android.util.Log.e("DockFinder", "Failed to load stations", e)
+            null
+        }
+    }
+
+    if (hasPermission) {
+        MainScreen(bearing, stations)
     } else {
-        PermissionDeniedScreen(
-            onRequestPermission = {
-                permissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
-            }
-        )
+        PermissionScreen { permissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION) }
     }
 }
 
 @Composable
-fun LocationPermissionGiven(bearing: Float) {
-
+fun MainScreen(bearing: Float, stations: Map<String, List<Station>>?) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val repository = remember { BikePointRepository() }
+    val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
 
-    val stations: Map<String, List<Station>> = remember { loadStations(context) }
+    var lastLocation by remember { mutableStateOf<Location?>(null) }
+    var nearbyStations by remember { mutableStateOf<List<NearbyStationCompass>>(emptyList()) }
+    // Keyed by station ID — concurrent-safe snapshot map, each entry filled in as API responds
+    val liveStatuses = remember { mutableStateMapOf<Int, BikePointStatus>() }
 
-    val fusedLocationClient = remember {
-        LocationServices.getFusedLocationProviderClient(context)
+    val statusText = when {
+        lastLocation == null && stations == null -> "Locating..."
+        lastLocation == null -> "Waiting for GPS..."
+        stations == null -> "Loading docks..."
+        nearbyStations.isEmpty() -> "No docks nearby"
+        else -> ""
     }
 
-    var nearestStation by remember {
-        mutableStateOf(NearbyStationCompass(
-            station = null,
-            distanceInMeters = 0,
-            cycle_bearing = 0f)
-        )
-    }
-
-    var locationInfo by remember {
-        mutableStateOf("Fetching location...")
-    }
-
-    var position by remember {
-        mutableStateOf<Location?>(null)
-    }
-
-    var currentGeoHash by remember {
-        mutableStateOf<String?>(null)
-    }
-
-    fun findNearestStationsInLayers(checkedHashes: MutableSet<String>): MutableSet<Station> {
-        val candidates: MutableSet<Station> = mutableSetOf()
-
-        val hashesToCheck: MutableSet<String> = mutableSetOf()
-
-        for (hash in checkedHashes) {
-            hashesToCheck.addAll(GeoHash.neighbours(hash))
+    // Recompute nearest stations whenever location or stations change
+    LaunchedEffect(lastLocation, stations) {
+        val location = lastLocation ?: return@LaunchedEffect
+        val loadedStations = stations ?: return@LaunchedEffect
+        val geoHash = GeoHash.encodeHash(location.latitude, location.longitude, 7)
+        val newStations = withContext(Dispatchers.Default) {
+            findNearestStations(location, geoHash, loadedStations)
         }
-
-        hashesToCheck.removeAll(checkedHashes)
-
-        for (hash in hashesToCheck) {
-            if (hash in stations) {
-                candidates.addAll(stations.getValue(hash))
-            }
-        }
-
-        if (candidates.any() ) {
-            return candidates
-        } else {
-            val allNowChecked: MutableSet<String> = mutableSetOf()
-            allNowChecked.addAll(hashesToCheck)
-            allNowChecked.addAll(checkedHashes)
-            return (findNearestStationsInLayers(allNowChecked))
-        }
-    }
-
-    fun findSantanderCandidatesCenteredAt(geoHash: String): Set<Station> {
-        val candidates: MutableSet<Station> = mutableSetOf()
-
-        val surroundings: MutableSet<String> = mutableSetOf()
-        surroundings.add(geoHash)
-        surroundings.addAll(GeoHash.neighbours(geoHash))
-
-        // check surrounding 9 hashes for a station
-        for (hash in surroundings) {
-            if (hash in stations) {
-                candidates.addAll(stations.getValue(hash))
-            }
-        }
-
-        return if (candidates.any()) candidates
-        else {
-            return findNearestStationsInLayers(surroundings)
-        }
-    }
-
-    fun fetchLocation() {
-        if (ActivityCompat.checkSelfPermission(
-            context, Manifest.permission.ACCESS_FINE_LOCATION
-        ) != PackageManager.PERMISSION_GRANTED ) {
-            locationInfo = "Permission not granted"
-            return
-        }
-
-        fusedLocationClient.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null)
-            .addOnSuccessListener { loc ->
-                if (loc != null) {
-                    position = Location("user").apply {
-                        latitude = loc.latitude; longitude = loc.longitude
-                    }
-                    currentGeoHash = GeoHash.encodeHash(loc.latitude, loc.longitude, 7)
-                } else {
-                    locationInfo = "Could not retrieve location"
-                    currentGeoHash = null
+        nearbyStations = newStations
+        // Fetch live status for any station not yet fetched (parallel, non-blocking)
+        newStations.forEach { nearby ->
+            if (nearby.station.id !in liveStatuses) {
+                scope.launch {
+                    repository.getBikePoint(nearby.station.id.toString())
+                        ?.let { liveStatuses[nearby.station.id] = it }
                 }
-        }
-            .addOnFailureListener {
-                locationInfo = "Failed to get location: ${it.message}"
-                currentGeoHash = null
-            }
-    }
-
-    fun orderNearestStations(){}
-
-    fun findNearestStationTo (position: Location, geoHash: String): NearbyStationCompass {
-        val candidates = findSantanderCandidatesCenteredAt(geoHash)
-
-        return candidates.map { station ->
-            val stationLocation: Location = Location("station").apply { latitude = station.lat; longitude = station.long }
-
-            val distance = position.distanceTo(stationLocation).toInt()
-            val cycleBearing = position.bearingTo(stationLocation)
-
-            NearbyStationCompass(station, distance, cycleBearing)
-        }.minBy{ it.distanceInMeters }
-    }
-
-    // currently only doing on app launch, should be more frequent
-    LaunchedEffect(key1 = Unit) {
-        while (true) {
-            delay(4000)
-            fetchLocation()
-            currentGeoHash?.let {
-                nearestStation = findNearestStationTo(position!!, it)
             }
         }
     }
 
-    Box(
-        contentAlignment = Alignment.Center
-    ) {
+    DisposableEffect(Unit) {
+        if (ActivityCompat.checkSelfPermission(
+                context, Manifest.permission.ACCESS_FINE_LOCATION
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            return@DisposableEffect onDispose {}
+        }
+
+        // Use last known location immediately for fast startup
+        fusedLocationClient.lastLocation.addOnSuccessListener { location ->
+            if (location != null) lastLocation = location
+        }
+
+        val locationRequest = LocationRequest.Builder(Priority.PRIORITY_BALANCED_POWER_ACCURACY, 3000L)
+            .setMinUpdateIntervalMillis(1000L)
+            .build()
+
+        val locationCallback = object : LocationCallback() {
+            override fun onLocationResult(result: LocationResult) {
+                result.lastLocation?.let { lastLocation = it }
+            }
+        }
+
+        fusedLocationClient.requestLocationUpdates(
+            locationRequest, locationCallback, Looper.getMainLooper()
+        )
+
+        onDispose { fusedLocationClient.removeLocationUpdates(locationCallback) }
+    }
+
+    val pagerState = rememberPagerState { nearbyStations.size.coerceAtLeast(1) }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        if (nearbyStations.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text(text = statusText, style = MaterialTheme.typography.body1)
+            }
+        } else {
+            HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
+                val station = nearbyStations[page]
+                StationPage(
+                    station = station,
+                    status = liveStatuses[station.station.id],
+                    bearing = bearing
+                )
+            }
+            HorizontalPageIndicator(
+                pageIndicatorState = object : PageIndicatorState {
+                    override val pageCount get() = pagerState.pageCount
+                    override val pageOffset get() = pagerState.currentPageOffsetFraction
+                    override val selectedPage get() = pagerState.currentPage
+                },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 4.dp)
+            )
+        }
+    }
+}
+
+@Composable
+fun StationPage(station: NearbyStationCompass, status: BikePointStatus?, bearing: Float) {
+    // Arrow points LEFT by default, so +90° rotates it to point UP (North = 0°)
+    val arrowRotation = station.cycleBearing - bearing + 90f
+
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Image(
-            painter = painterResource(id = R.drawable.arrow),
-            contentDescription = "Arrow",
+            painter = painterResource(R.drawable.arrow),
+            contentDescription = "Direction to nearest dock",
             modifier = Modifier
-                .rotate(180f - bearing + nearestStation.cycle_bearing)
-                .fillMaxSize(fraction = 0.9f),
+                .fillMaxSize(0.9f)
+                .rotate(arrowRotation)
         )
         Column(
-            modifier = Modifier
-                .fillMaxSize(),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
+            modifier = Modifier.fillMaxSize()
         ) {
-            position?.let {
-                Text(position.toString())
-            } ?: run {
-                Text(locationInfo)
+            Text(
+                text = "${station.distanceInMeters}m",
+                style = MaterialTheme.typography.display1.copy(fontWeight = FontWeight.Bold),
+                color = Color.White
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = station.station.name,
+                style = MaterialTheme.typography.caption2,
+                textAlign = TextAlign.Center,
+                color = Color(0xFFCCCCCC),
+                modifier = Modifier.padding(horizontal = 32.dp)
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            if (status != null) {
+                Text(
+                    text = "${status.bikes} bikes  |  ${status.eBikes} e-bikes  |  ${status.emptyDocks} free",
+                    style = MaterialTheme.typography.caption2,
+                    color = MaterialTheme.colors.primary,
+                    textAlign = TextAlign.Center
+                )
             }
-            Spacer(modifier = Modifier.height(10.dp))
-            currentGeoHash?.let {
-                Text(it)
-            }
-            Spacer(modifier = Modifier.height(10.dp))
-            nearestStation.station?.let { Text(it.name) }
-            Text(nearestStation.distanceInMeters.toString())
-            Text(nearestStation.cycle_bearing.toString())
-            Spacer(modifier = Modifier.height(5.dp))
         }
     }
 }
 
+fun findNearestStations(
+    position: Location,
+    geoHash: String,
+    stations: Map<String, List<Station>>,
+    limit: Int = 5
+): List<NearbyStationCompass> {
+    val candidates = findCandidates(geoHash, stations)
+    return candidates.map { station ->
+        val stationLocation = Location("").apply {
+            latitude = station.lat
+            longitude = station.long
+        }
+        NearbyStationCompass(
+            station = station,
+            distanceInMeters = position.distanceTo(stationLocation).roundToInt(),
+            cycleBearing = position.bearingTo(stationLocation)
+        )
+    }.sortedBy { it.distanceInMeters }.take(limit)
+}
+
+private fun findCandidates(geoHash: String, stations: Map<String, List<Station>>): Set<Station> {
+    // Start with the current cell and its 8 neighbours
+    val initial = mutableSetOf(geoHash).also { it.addAll(GeoHash.neighbours(geoHash)) }
+    val candidates = initial.flatMap { stations[it] ?: emptyList() }.toMutableSet()
+    if (candidates.isNotEmpty()) return candidates
+
+    // Expand outward ring by ring (up to 3 more rings) until we find something
+    var frontier = initial
+    repeat(3) {
+        val next = mutableSetOf<String>()
+        for (hash in frontier) next.addAll(GeoHash.neighbours(hash))
+        next.removeAll(frontier)
+        frontier = next
+        for (hash in next) stations[hash]?.let { candidates.addAll(it) }
+        if (candidates.isNotEmpty()) return candidates
+    }
+    return candidates
+}
+
 @Composable
-fun PermissionDeniedScreen (onRequestPermission: () -> Unit) {
-    Column(
+fun PermissionScreen(onRequest: () -> Unit) {
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colors.background)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
+            .background(Color.Black),
+        contentAlignment = Alignment.Center
     ) {
-        Text("Permission to view your location is required to use this app")
-        Spacer(modifier = Modifier.height(16.dp))
-        Button(onClick = onRequestPermission) {
-            Text("Enable Location")
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(24.dp)
+        ) {
+            Text(
+                text = "Location needed to find nearby docks",
+                textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.body2
+            )
+            Button(
+                onClick = onRequest,
+                colors = ButtonDefaults.buttonColors(
+                    backgroundColor = Color(0xFFDC241F)
+                )
+            ) {
+                Text("Allow")
+            }
         }
     }
 }
