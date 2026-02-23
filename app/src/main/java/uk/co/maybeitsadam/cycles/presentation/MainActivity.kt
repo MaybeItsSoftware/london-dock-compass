@@ -10,12 +10,14 @@ import android.hardware.SensorManager
 import android.location.Location
 import android.os.Bundle
 import android.os.Looper
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,6 +27,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -99,6 +102,9 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     // compassBearing is the direction the top of the watch is pointing (0=North, clockwise)
     private val compassBearing = mutableFloatStateOf(0f)
 
+    // Cycle mode: faster updates and keep screen on while cycling
+    private val cycleModeEnabled = mutableStateOf(false)
+
     private val rotationMatrix = FloatArray(9)
     private val orientationAngles = FloatArray(3)
 
@@ -120,8 +126,29 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             )
             MaterialTheme(colors = appColors) {
                 Scaffold(timeText = { TimeText() }) {
-                    DockFinderApp(compassBearing.floatValue)
+                    DockFinderApp(
+                        bearing = compassBearing.floatValue,
+                        cycleMode = cycleModeEnabled.value,
+                        onToggleCycleMode = ::toggleCycleMode
+                    )
                 }
+            }
+        }
+    }
+
+    private fun toggleCycleMode(enabled: Boolean) {
+        cycleModeEnabled.value = enabled
+        if (enabled) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            rotationVectorSensor?.let {
+                sensorManager.unregisterListener(this)
+                sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_FASTEST)
+            }
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            rotationVectorSensor?.let {
+                sensorManager.unregisterListener(this)
+                sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
             }
         }
     }
@@ -129,7 +156,9 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     override fun onResume() {
         super.onResume()
         rotationVectorSensor?.let {
-            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
+            val delay = if (cycleModeEnabled.value) SensorManager.SENSOR_DELAY_FASTEST
+                else SensorManager.SENSOR_DELAY_GAME
+            sensorManager.registerListener(this, it, delay)
         }
     }
 
@@ -148,8 +177,9 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         val azimuthDeg = Math.toDegrees(orientationAngles[0].toDouble()).toFloat()
         val newBearing = (azimuthDeg + 360f) % 360f
 
-        // Smooth using angular lerp to avoid jitter without sluggish response
-        compassBearing.floatValue = lerpAngle(compassBearing.floatValue, newBearing, 0.2f)
+        // In cycle mode use a higher lerp factor for faster, more responsive arrow movement
+        val lerpFactor = if (cycleModeEnabled.value) 0.5f else 0.2f
+        compassBearing.floatValue = lerpAngle(compassBearing.floatValue, newBearing, lerpFactor)
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
@@ -171,7 +201,7 @@ private fun loadStations(context: Context): Map<String, List<Station>> {
 }
 
 @Composable
-fun DockFinderApp(bearing: Float) {
+fun DockFinderApp(bearing: Float, cycleMode: Boolean, onToggleCycleMode: (Boolean) -> Unit) {
     val context = LocalContext.current
 
     // Check if permission is already granted so we don't flash the permission screen
@@ -206,14 +236,19 @@ fun DockFinderApp(bearing: Float) {
     }
 
     if (hasPermission) {
-        MainScreen(bearing, stations)
+        MainScreen(bearing, stations, cycleMode, onToggleCycleMode)
     } else {
         PermissionScreen { permissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION) }
     }
 }
 
 @Composable
-fun MainScreen(bearing: Float, stations: Map<String, List<Station>>?) {
+fun MainScreen(
+    bearing: Float,
+    stations: Map<String, List<Station>>?,
+    cycleMode: Boolean,
+    onToggleCycleMode: (Boolean) -> Unit
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val repository = remember { BikePointRepository() }
@@ -252,7 +287,8 @@ fun MainScreen(bearing: Float, stations: Map<String, List<Station>>?) {
         }
     }
 
-    DisposableEffect(Unit) {
+    // Re-create location updates when cycle mode changes for faster/slower intervals
+    DisposableEffect(cycleMode) {
         if (ActivityCompat.checkSelfPermission(
                 context, Manifest.permission.ACCESS_FINE_LOCATION
             ) != PackageManager.PERMISSION_GRANTED
@@ -265,9 +301,15 @@ fun MainScreen(bearing: Float, stations: Map<String, List<Station>>?) {
             if (location != null) lastLocation = location
         }
 
-        val locationRequest = LocationRequest.Builder(Priority.PRIORITY_BALANCED_POWER_ACCURACY, 3000L)
-            .setMinUpdateIntervalMillis(1000L)
-            .build()
+        val locationRequest = if (cycleMode) {
+            LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 1000L)
+                .setMinUpdateIntervalMillis(500L)
+                .build()
+        } else {
+            LocationRequest.Builder(Priority.PRIORITY_BALANCED_POWER_ACCURACY, 3000L)
+                .setMinUpdateIntervalMillis(1000L)
+                .build()
+        }
 
         val locationCallback = object : LocationCallback() {
             override fun onLocationResult(result: LocationResult) {
@@ -295,7 +337,9 @@ fun MainScreen(bearing: Float, stations: Map<String, List<Station>>?) {
                 StationPage(
                     station = station,
                     status = liveStatuses[station.station.id],
-                    bearing = bearing
+                    bearing = bearing,
+                    cycleMode = cycleMode,
+                    onToggleCycleMode = onToggleCycleMode
                 )
             }
             HorizontalPageIndicator(
@@ -313,7 +357,13 @@ fun MainScreen(bearing: Float, stations: Map<String, List<Station>>?) {
 }
 
 @Composable
-fun StationPage(station: NearbyStationCompass, status: BikePointStatus?, bearing: Float) {
+fun StationPage(
+    station: NearbyStationCompass,
+    status: BikePointStatus?,
+    bearing: Float,
+    cycleMode: Boolean,
+    onToggleCycleMode: (Boolean) -> Unit
+) {
     // Arrow points LEFT by default, so +90° rotates it to point UP (North = 0°)
     val arrowRotation = station.cycleBearing - bearing + 90f
 
@@ -330,26 +380,50 @@ fun StationPage(station: NearbyStationCompass, status: BikePointStatus?, bearing
             verticalArrangement = Arrangement.Center,
             modifier = Modifier.fillMaxSize()
         ) {
-            Text(
-                text = "${station.distanceInMeters}m",
-                style = MaterialTheme.typography.display1.copy(fontWeight = FontWeight.Bold),
-                color = Color.White
-            )
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = station.station.name,
-                style = MaterialTheme.typography.caption2,
-                textAlign = TextAlign.Center,
-                color = Color(0xFFCCCCCC),
-                modifier = Modifier.padding(horizontal = 32.dp)
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            if (status != null) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier
+                    .background(Color.Black.copy(alpha = 0.6f), shape = RoundedCornerShape(8.dp))
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+            ) {
                 Text(
-                    text = "${status.bikes} bikes  |  ${status.eBikes} e-bikes  |  ${status.emptyDocks} free",
+                    text = "${station.distanceInMeters}m",
+                    style = MaterialTheme.typography.display1.copy(fontWeight = FontWeight.Bold),
+                    color = Color.White
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = station.station.name,
+                    style = MaterialTheme.typography.body2.copy(fontWeight = FontWeight.Medium),
+                    textAlign = TextAlign.Center,
+                    color = Color.White,
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                if (status != null) {
+                    Text(
+                        text = "${status.bikes} bikes  |  ${status.eBikes} e-bikes  |  ${status.emptyDocks} free",
+                        style = MaterialTheme.typography.caption1,
+                        color = MaterialTheme.colors.primary,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(6.dp))
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .background(
+                        color = if (cycleMode) MaterialTheme.colors.primary else Color(0xFF444444),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    .clickable { onToggleCycleMode(!cycleMode) }
+                    .padding(horizontal = 12.dp, vertical = 4.dp)
+            ) {
+                Text(
+                    text = if (cycleMode) "CYCLING" else "CYCLE",
                     style = MaterialTheme.typography.caption2,
-                    color = MaterialTheme.colors.primary,
-                    textAlign = TextAlign.Center
+                    color = Color.White
                 )
             }
         }
