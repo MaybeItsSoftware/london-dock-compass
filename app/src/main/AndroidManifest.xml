@@ -30,6 +30,9 @@
             <meta-data
                 android:name="android.support.wearable.complications.UPDATE_PERIOD_SECONDS"
                 android:value="0" />
+            <meta-data
+                android:name="com.google.android.wearable.standalone"
+                android:value="true" />
         </service>
 
 

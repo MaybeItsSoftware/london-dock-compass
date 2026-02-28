@@ -26,7 +26,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -137,7 +136,6 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         lifecycle.addObserver(AmbientLifecycleObserver(this, ambientCallback))
 
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
-        // TYPE_ROTATION_VECTOR fuses accel + gyro + magnetometer for a stable heading
         rotationVectorSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
 
         setTheme(android.R.style.Theme_DeviceDefault)
@@ -166,7 +164,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         rotationVectorSensor?.let {
             sensorManager.unregisterListener(this)
             val delay = if (enabled) SensorManager.SENSOR_DELAY_FASTEST
-            else SensorManager.SENSOR_DELAY_NORMAL
+            else SensorManager.SENSOR_DELAY_UI // <-- Change this to UI
             sensorManager.registerListener(this, it, delay)
         }
     }
@@ -175,7 +173,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         super.onResume()
         rotationVectorSensor?.let {
             val delay = if (cycleModeEnabled.value) SensorManager.SENSOR_DELAY_FASTEST
-            else SensorManager.SENSOR_DELAY_NORMAL
+            else SensorManager.SENSOR_DELAY_UI // <-- Change this to UI
             sensorManager.registerListener(this, it, delay)
         }
     }
@@ -191,20 +189,17 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
         SensorManager.getOrientation(rotationMatrix, orientationAngles)
 
-        // orientationAngles[0] = azimuth: angle between device Y-axis and North, clockwise
         val azimuthDeg = Math.toDegrees(orientationAngles[0].toDouble()).toFloat()
         val newBearing = (azimuthDeg + 360f) % 360f
 
-        val lerpFactor = if (cycleModeEnabled.value) 0.5f else 0.1f
+        // --> Lower the normal mode factor to 0.04f for a smooth, heavy glide
+        val lerpFactor = if (cycleModeEnabled.value) 0.5f else 0.04f
         compassBearing.floatValue = lerpAngle(compassBearing.floatValue, newBearing, lerpFactor)
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
 }
 
-/**
- * Interpolates between two compass bearings, correctly handling the 0°/360° wrap.
- */
 private fun lerpAngle(current: Float, target: Float, factor: Float): Float {
     val diff = ((target - current + 540f) % 360f) - 180f
     return (current + diff * factor + 360f) % 360f
