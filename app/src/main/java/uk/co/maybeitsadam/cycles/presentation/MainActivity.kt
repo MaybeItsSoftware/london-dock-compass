@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
@@ -39,21 +40,27 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.wear.ambient.AmbientLifecycleObserver
 import androidx.wear.compose.material.Button
 import androidx.wear.compose.material.ButtonDefaults
 import androidx.wear.compose.material.HorizontalPageIndicator
+import androidx.wear.compose.material.Icon
 import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.PageIndicatorState
 import androidx.wear.compose.material.Scaffold
 import androidx.wear.compose.material.Text
 import androidx.wear.compose.material.TimeText
+import androidx.wear.compose.material.ToggleChip
+import androidx.wear.compose.material.ToggleChipDefaults
 import com.github.davidmoten.geo.GeoHash
 import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationRequest
@@ -99,15 +106,36 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     // compassBearing is the direction the top of the watch is pointing (0=North, clockwise)
     private val compassBearing = mutableFloatStateOf(0f)
 
+    // Cycle mode: faster updates and keep screen on while cycling
+    private val cycleModeEnabled = mutableStateOf(false)
+
     private val rotationMatrix = FloatArray(9)
     private val orientationAngles = FloatArray(3)
+
+    // Track if the watch is awake or resting (ambient mode)
+    private val isAmbient = mutableStateOf(false)
+
+    private val ambientCallback = object : AmbientLifecycleObserver.AmbientLifecycleCallback {
+        override fun onEnterAmbient(ambientDetails: AmbientLifecycleObserver.AmbientDetails) {
+            isAmbient.value = true
+        }
+
+        override fun onExitAmbient() {
+            isAmbient.value = false
+        }
+
+        override fun onUpdateAmbient() {
+            // Called occasionally by the system to refresh the screen in ambient mode
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
 
+        lifecycle.addObserver(AmbientLifecycleObserver(this, ambientCallback))
+
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
-        // TYPE_ROTATION_VECTOR fuses accel + gyro + magnetometer for a stable heading
         rotationVectorSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
 
         setTheme(android.R.style.Theme_DeviceDefault)
@@ -120,16 +148,33 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             )
             MaterialTheme(colors = appColors) {
                 Scaffold(timeText = { TimeText() }) {
-                    DockFinderApp(compassBearing.floatValue)
+                    DockFinderApp(
+                        bearing = compassBearing.floatValue,
+                        cycleMode = cycleModeEnabled.value,
+                        onToggleCycleMode = ::toggleCycleMode,
+                        isAmbient = isAmbient.value
+                    )
                 }
             }
+        }
+    }
+
+    private fun toggleCycleMode(enabled: Boolean) {
+        cycleModeEnabled.value = enabled
+        rotationVectorSensor?.let {
+            sensorManager.unregisterListener(this)
+            val delay = if (enabled) SensorManager.SENSOR_DELAY_FASTEST
+            else SensorManager.SENSOR_DELAY_UI // <-- Change this to UI
+            sensorManager.registerListener(this, it, delay)
         }
     }
 
     override fun onResume() {
         super.onResume()
         rotationVectorSensor?.let {
-            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
+            val delay = if (cycleModeEnabled.value) SensorManager.SENSOR_DELAY_FASTEST
+            else SensorManager.SENSOR_DELAY_UI // <-- Change this to UI
+            sensorManager.registerListener(this, it, delay)
         }
     }
 
@@ -144,20 +189,17 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
         SensorManager.getOrientation(rotationMatrix, orientationAngles)
 
-        // orientationAngles[0] = azimuth: angle between device Y-axis and North, clockwise
         val azimuthDeg = Math.toDegrees(orientationAngles[0].toDouble()).toFloat()
         val newBearing = (azimuthDeg + 360f) % 360f
 
-        // Smooth using angular lerp to avoid jitter without sluggish response
-        compassBearing.floatValue = lerpAngle(compassBearing.floatValue, newBearing, 0.2f)
+        // --> Lower the normal mode factor to 0.04f for a smooth, heavy glide
+        val lerpFactor = if (cycleModeEnabled.value) 0.5f else 0.04f
+        compassBearing.floatValue = lerpAngle(compassBearing.floatValue, newBearing, lerpFactor)
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
 }
 
-/**
- * Interpolates between two compass bearings, correctly handling the 0°/360° wrap.
- */
 private fun lerpAngle(current: Float, target: Float, factor: Float): Float {
     val diff = ((target - current + 540f) % 360f) - 180f
     return (current + diff * factor + 360f) % 360f
@@ -171,7 +213,12 @@ private fun loadStations(context: Context): Map<String, List<Station>> {
 }
 
 @Composable
-fun DockFinderApp(bearing: Float) {
+fun DockFinderApp(
+    bearing: Float,
+    cycleMode: Boolean,
+    onToggleCycleMode: (Boolean) -> Unit,
+    isAmbient: Boolean
+) {
     val context = LocalContext.current
 
     // Check if permission is already granted so we don't flash the permission screen
@@ -206,15 +253,22 @@ fun DockFinderApp(bearing: Float) {
     }
 
     if (hasPermission) {
-        MainScreen(bearing, stations)
+        MainScreen(bearing, stations, cycleMode, onToggleCycleMode, isAmbient)
     } else {
         PermissionScreen { permissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION) }
     }
 }
 
 @Composable
-fun MainScreen(bearing: Float, stations: Map<String, List<Station>>?) {
+fun MainScreen(
+    bearing: Float,
+    stations: Map<String, List<Station>>?,
+    cycleMode: Boolean,
+    onToggleCycleMode: (Boolean) -> Unit,
+    isAmbient: Boolean
+) {
     val context = LocalContext.current
+    val view = LocalView.current
     val scope = rememberCoroutineScope()
     val repository = remember { BikePointRepository() }
     val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
@@ -223,6 +277,13 @@ fun MainScreen(bearing: Float, stations: Map<String, List<Station>>?) {
     var nearbyStations by remember { mutableStateOf<List<NearbyStationCompass>>(emptyList()) }
     // Keyed by station ID — concurrent-safe snapshot map, each entry filled in as API responds
     val liveStatuses = remember { mutableStateMapOf<Int, BikePointStatus>() }
+
+    DisposableEffect(cycleMode) {
+        view.keepScreenOn = cycleMode
+        onDispose {
+            view.keepScreenOn = false // Clean up when leaving or toggling off
+        }
+    }
 
     val statusText = when {
         lastLocation == null && stations == null -> "Locating..."
@@ -252,7 +313,8 @@ fun MainScreen(bearing: Float, stations: Map<String, List<Station>>?) {
         }
     }
 
-    DisposableEffect(Unit) {
+    // Re-create location updates when cycle mode changes for faster/slower intervals
+    DisposableEffect(cycleMode) {
         if (ActivityCompat.checkSelfPermission(
                 context, Manifest.permission.ACCESS_FINE_LOCATION
             ) != PackageManager.PERMISSION_GRANTED
@@ -265,9 +327,15 @@ fun MainScreen(bearing: Float, stations: Map<String, List<Station>>?) {
             if (location != null) lastLocation = location
         }
 
-        val locationRequest = LocationRequest.Builder(Priority.PRIORITY_BALANCED_POWER_ACCURACY, 3000L)
-            .setMinUpdateIntervalMillis(1000L)
-            .build()
+        val locationRequest = if (cycleMode) {
+            LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 1000L)
+                .setMinUpdateIntervalMillis(500L)
+                .build()
+        } else {
+            LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 5000L)
+                .setMinUpdateIntervalMillis(2000L)
+                .build()
+        }
 
         val locationCallback = object : LocationCallback() {
             override fun onLocationResult(result: LocationResult) {
@@ -282,38 +350,98 @@ fun MainScreen(bearing: Float, stations: Map<String, List<Station>>?) {
         onDispose { fusedLocationClient.removeLocationUpdates(locationCallback) }
     }
 
-    val pagerState = rememberPagerState { nearbyStations.size.coerceAtLeast(1) }
+    val totalPages = nearbyStations.size + 1  // page 0 = CycleModePage, pages 1+ = StationPages
+    val pagerState = rememberPagerState { totalPages }
+
+    var hasInitializedPager by remember { mutableStateOf(false) }
+
+    LaunchedEffect(nearbyStations) {
+        // Wait until stations are loaded and we haven't scrolled yet
+        if (nearbyStations.isNotEmpty() && !hasInitializedPager) {
+            pagerState.scrollToPage(1) // Jump to the closest station
+            hasInitializedPager = true // Ensure we only do this once
+        }
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        if (nearbyStations.isEmpty()) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(text = statusText, style = MaterialTheme.typography.body1)
-            }
-        } else {
-            HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
-                val station = nearbyStations[page]
+        HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
+            if (page == 0) {
+                CycleModePage(cycleMode, onToggleCycleMode, statusText)
+            } else {
+                val station = nearbyStations[page - 1]
                 StationPage(
                     station = station,
                     status = liveStatuses[station.station.id],
-                    bearing = bearing
+                    bearing = bearing,
+                    isAmbient = isAmbient
                 )
             }
-            HorizontalPageIndicator(
-                pageIndicatorState = object : PageIndicatorState {
-                    override val pageCount get() = pagerState.pageCount
-                    override val pageOffset get() = pagerState.currentPageOffsetFraction
-                    override val selectedPage get() = pagerState.currentPage
+        }
+        HorizontalPageIndicator(
+            pageIndicatorState = object : PageIndicatorState {
+                override val pageCount get() = pagerState.pageCount
+                override val pageOffset get() = pagerState.currentPageOffsetFraction
+                override val selectedPage get() = pagerState.currentPage
+            },
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 4.dp)
+        )
+    }
+}
+
+@Composable
+fun CycleModePage(cycleMode: Boolean, onToggleCycleMode: (Boolean) -> Unit, statusText: String) {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier.padding(16.dp)
+        ) {
+            if (statusText.isNotEmpty()) {
+                Text(
+                    text = statusText,
+                    style = MaterialTheme.typography.body2,
+                    textAlign = TextAlign.Center,
+                    color = Color.White
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+
+            // Native Wear OS Toggle
+            ToggleChip(
+                modifier = Modifier.fillMaxWidth(0.9f),
+                checked = cycleMode,
+                onCheckedChange = onToggleCycleMode,
+                label = {
+                    Text(
+                        text = "Cycle Mode",
+                        style = MaterialTheme.typography.button,
+                        color = Color.White
+                    )
                 },
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 4.dp)
+                toggleControl = {
+                    Icon(
+                        imageVector = ToggleChipDefaults.switchIcon(checked = cycleMode),
+                        contentDescription = if (cycleMode) "On" else "Off"
+                    )
+                },
+                colors = ToggleChipDefaults.toggleChipColors(
+                    checkedStartBackgroundColor = MaterialTheme.colors.primary,
+                    checkedEndBackgroundColor = Color(0xFF333333) // Dark grey when off
+                )
             )
         }
     }
 }
 
 @Composable
-fun StationPage(station: NearbyStationCompass, status: BikePointStatus?, bearing: Float) {
+fun StationPage(
+    station: NearbyStationCompass,
+    status: BikePointStatus?,
+    bearing: Float,
+    isAmbient: Boolean
+) {
     // Arrow points LEFT by default, so +90° rotates it to point UP (North = 0°)
     val arrowRotation = station.cycleBearing - bearing + 90f
 
@@ -323,34 +451,48 @@ fun StationPage(station: NearbyStationCompass, status: BikePointStatus?, bearing
             contentDescription = "Direction to nearest dock",
             modifier = Modifier
                 .fillMaxSize(0.9f)
-                .rotate(arrowRotation)
+                .rotate(arrowRotation),
+            colorFilter = if (isAmbient) ColorFilter.tint(Color.White) else null
         )
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
             modifier = Modifier.fillMaxSize()
         ) {
-            Text(
-                text = "${station.distanceInMeters}m",
-                style = MaterialTheme.typography.display1.copy(fontWeight = FontWeight.Bold),
-                color = Color.White
-            )
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = station.station.name,
-                style = MaterialTheme.typography.caption2,
-                textAlign = TextAlign.Center,
-                color = Color(0xFFCCCCCC),
-                modifier = Modifier.padding(horizontal = 32.dp)
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            if (status != null) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                // --> Remove the background box entirely in ambient mode
+                modifier = if (isAmbient) {
+                    Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                } else {
+                    Modifier
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                }
+            ) {
                 Text(
-                    text = "${status.bikes} bikes  |  ${status.eBikes} e-bikes  |  ${status.emptyDocks} free",
-                    style = MaterialTheme.typography.caption2,
-                    color = MaterialTheme.colors.primary,
-                    textAlign = TextAlign.Center
+                    text = "${station.distanceInMeters}m",
+                    style = MaterialTheme.typography.display1.copy(fontWeight = FontWeight.Bold),
+                    color = Color.White
                 )
+                Spacer(modifier = Modifier.height(2.dp))
+                if (!isAmbient) {
+                    Text(
+                        text = station.station.name,
+                        style = MaterialTheme.typography.body2.copy(fontWeight = FontWeight.Medium),
+                        textAlign = TextAlign.Center,
+                        color = Color.White,
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    if (status != null) {
+                        Text(
+                            text = "${status.bikes} bikes  |  ${status.eBikes} e-bikes  |  ${status.emptyDocks} free",
+                            style = MaterialTheme.typography.caption1,
+                            color = MaterialTheme.colors.primary,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
             }
         }
     }
@@ -362,7 +504,7 @@ fun findNearestStations(
     stations: Map<String, List<Station>>,
     limit: Int = 5
 ): List<NearbyStationCompass> {
-    val candidates = findCandidates(geoHash, stations)
+    val candidates = findCandidates(geoHash, stations, minCount = limit)
     return candidates.map { station ->
         val stationLocation = Location("").apply {
             latitude = station.lat
@@ -376,21 +518,21 @@ fun findNearestStations(
     }.sortedBy { it.distanceInMeters }.take(limit)
 }
 
-private fun findCandidates(geoHash: String, stations: Map<String, List<Station>>): Set<Station> {
-    // Start with the current cell and its 8 neighbours
+private fun findCandidates(geoHash: String, stations: Map<String, List<Station>>, minCount: Int = 3): Set<Station> {
     val initial = mutableSetOf(geoHash).also { it.addAll(GeoHash.neighbours(geoHash)) }
     val candidates = initial.flatMap { stations[it] ?: emptyList() }.toMutableSet()
-    if (candidates.isNotEmpty()) return candidates
 
-    // Expand outward ring by ring (up to 3 more rings) until we find something
     var frontier = initial
-    repeat(3) {
+    val visited = initial.toMutableSet()
+
+    repeat(5) {
+        if (candidates.size >= minCount) return candidates
         val next = mutableSetOf<String>()
         for (hash in frontier) next.addAll(GeoHash.neighbours(hash))
-        next.removeAll(frontier)
+        next.removeAll(visited)
+        visited.addAll(next)
         frontier = next
         for (hash in next) stations[hash]?.let { candidates.addAll(it) }
-        if (candidates.isNotEmpty()) return candidates
     }
     return candidates
 }
