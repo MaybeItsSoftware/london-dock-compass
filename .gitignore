@@ -13,3 +13,10 @@
 .externalNativeBuild
 .cxx
 local.properties
+play-store-assets/
+
+# Signing — never commit
+*.jks
+*.keystore
+keystore.properties
+keybackup.txt
