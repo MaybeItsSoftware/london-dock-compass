@@ -1,0 +1,40 @@
+ROOT   = File.expand_path("..", __dir__)
+APP_ID = "uk.co.maybeitssoftware.londondockcompass"
+
+platform :android do
+  desc "Build a signed release AAB and upload it to the Play internal testing track"
+  lane :beta do
+    sh("cd #{ROOT} && ./gradlew bundleRelease")
+
+    upload_to_play_store(
+      package_name:            APP_ID,
+      track:                   "internal",
+      aab:                     File.join(ROOT, "app", "build", "outputs", "bundle", "release", "app-release.aab"),
+      json_key_data:           ENV["PLAY_SERVICE_ACCOUNT_JSON"],
+      skip_upload_apk:         true,
+      skip_upload_metadata:    true,
+      skip_upload_images:      true,
+      skip_upload_screenshots: true,
+    )
+  end
+
+  desc "Promote the current internal-track build to production"
+  lane :promote do
+    upload_to_play_store(
+      package_name:            APP_ID,
+      track:                   "internal",
+      track_promote_to:        "production",
+      json_key_data:           ENV["PLAY_SERVICE_ACCOUNT_JSON"],
+      skip_upload_apk:         true,
+      skip_upload_aab:         true,
+      skip_upload_metadata:    true,
+      skip_upload_images:      true,
+      skip_upload_screenshots: true,
+    )
+  end
+
+  desc "Download metadata and screenshots from Google Play Store"
+  lane :download_metadata do
+    sh("bundle exec fastlane supply init --json_key_data '#{ENV["PLAY_SERVICE_ACCOUNT_JSON"]}' --metadata_path '#{File.join(__dir__, "metadata", "android")}'")
+  end
+end

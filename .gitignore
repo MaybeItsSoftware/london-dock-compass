@@ -20,3 +20,14 @@ play-store-assets/
 *.keystore
 keystore.properties
 keybackup.txt
+
+# Fastlane / Ruby
+.bundle/
+vendor/bundle/
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output
+
+# Node
+node_modules/

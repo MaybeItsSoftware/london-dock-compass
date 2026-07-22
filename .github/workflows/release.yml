@@ -1,0 +1,57 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  test:
+    name: Pre-release checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Lint
+        run: ./gradlew lint
+      - name: Unit tests
+        run: ./gradlew test
+
+  release:
+    name: Release
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Dependencies
+        run: npm ci || npm install
+      - name: Verify a reachable release tag exists
+        # semantic-release silently releases 1.0.0 (ignoring commit types) when it
+        # can't find any reachable vX.Y.Z tag — fail loudly instead so a lost/deleted
+        # tag is caught here, not discovered after a wrong version ships.
+        run: |
+          if ! git tag --merged HEAD | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::No reachable vX.Y.Z tag found in history — semantic-release would default to 1.0.0 instead of bumping from the real baseline. Tag a baseline release before merging."
+            exit 1
+          fi
+      - name: Run Semantic Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx semantic-release
