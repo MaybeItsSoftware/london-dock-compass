@@ -1,4 +1,4 @@
-package uk.co.maybeitsadam.cycles.complication
+package uk.co.maybeitssoftware.londondockcompass.complication
 
 import androidx.wear.watchface.complications.data.ComplicationData
 import androidx.wear.watchface.complications.data.ComplicationType

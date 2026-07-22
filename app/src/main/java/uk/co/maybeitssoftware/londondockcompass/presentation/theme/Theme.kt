@@ -1,10 +1,10 @@
-package uk.co.maybeitsadam.cycles.presentation.theme
+package uk.co.maybeitssoftware.londondockcompass.presentation.theme
 
 import androidx.compose.runtime.Composable
 import androidx.wear.compose.material.MaterialTheme
 
 @Composable
-fun DockFinderTheme(
+fun LondonDockCompassTheme(
     content: @Composable () -> Unit
 ) {
     /**

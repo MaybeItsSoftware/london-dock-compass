@@ -1,4 +1,4 @@
-package uk.co.maybeitsadam.cycles.presentation
+package uk.co.maybeitssoftware.londondockcompass.presentation
 
 import android.Manifest
 import android.content.Context
@@ -72,9 +72,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import uk.co.maybeitsadam.cycles.R
-import uk.co.maybeitsadam.cycles.data.BikePointRepository
-import uk.co.maybeitsadam.cycles.data.BikePointStatus
+import uk.co.maybeitssoftware.londondockcompass.R
+import uk.co.maybeitssoftware.londondockcompass.data.BikePointRepository
+import uk.co.maybeitssoftware.londondockcompass.data.BikePointStatus
 import java.io.InputStream
 import kotlin.math.roundToInt
 
@@ -148,7 +148,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             )
             MaterialTheme(colors = appColors) {
                 Scaffold(timeText = { TimeText() }) {
-                    DockFinderApp(
+                    LondonDockCompassApp(
                         bearing = compassBearing.floatValue,
                         cycleMode = cycleModeEnabled.value,
                         onToggleCycleMode = ::toggleCycleMode,
@@ -213,7 +213,7 @@ private fun loadStations(context: Context): Map<String, List<Station>> {
 }
 
 @Composable
-fun DockFinderApp(
+fun LondonDockCompassApp(
     bearing: Float,
     cycleMode: Boolean,
     onToggleCycleMode: (Boolean) -> Unit,
@@ -247,7 +247,7 @@ fun DockFinderApp(
         stations = try {
             withContext(Dispatchers.Default) { loadStations(context) }
         } catch (e: Exception) {
-            android.util.Log.e("DockFinder", "Failed to load stations", e)
+            android.util.Log.e("LondonDockCompass", "Failed to load stations", e)
             null
         }
     }

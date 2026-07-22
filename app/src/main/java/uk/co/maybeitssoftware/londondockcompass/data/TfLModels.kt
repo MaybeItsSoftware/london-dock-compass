@@ -1,4 +1,4 @@
-package uk.co.maybeitsadam.cycles.data
+package uk.co.maybeitssoftware.londondockcompass.data
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
