@@ -19,5 +19,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Dock Finder"
+rootProject.name = "London Dock Compass"
 include(":app")

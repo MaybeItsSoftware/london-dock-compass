@@ -14,11 +14,11 @@ val keystoreProps = Properties().apply {
 }
 
 android {
-    namespace = "uk.co.maybeitsadam.cycles"
+    namespace = "uk.co.maybeitssoftware.londondockcompass"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "uk.co.maybeitsadam.cycles"
+        applicationId = "uk.co.maybeitssoftware.londondockcompass"
         minSdk = 30
         targetSdk = 35
         versionCode = 2
