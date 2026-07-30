@@ -21,8 +21,8 @@ android {
         applicationId = "uk.co.maybeitssoftware.londondockcompass"
         minSdk = 30
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.0"
+        versionCode = 10100
+        versionName = "1.1.0"
     }
 
     signingConfigs {
