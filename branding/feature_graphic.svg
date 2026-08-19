@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 500" width="1024" height="500">
+  <rect x="0" y="0" width="1024" height="500" fill="#faf8f4"/>
+  <svg x="62.0" y="72.0" width="356.0" height="356.0" viewBox="0 0 512 512">
+  <defs>
+    <mask id="f-needle" maskUnits="userSpaceOnUse" x="0" y="0" width="512" height="512">
+      <rect x="0" y="0" width="512" height="512" fill="#fff"/>
+      <path d="M256.0,81.0 L276.0,256.0 L256.0,332.0 L236.0,256.0 Z" fill="#000" stroke="#000"
+            stroke-width="17.0" stroke-linejoin="round"/>
+    </mask>
+    <mask id="f-hub" maskUnits="userSpaceOnUse" x="0" y="0" width="512" height="512">
+      <rect x="0" y="0" width="512" height="512" fill="#fff"/>
+      <circle cx="256.0" cy="256.0" r="16.0" fill="#000"/>
+    </mask>
+  </defs>
+  <g transform="translate(256.0,256.0) scale(0.96000) translate(-256.0,-256.0)">
+    <g mask="url(#f-needle)" fill="none" stroke="#d62246">
+      <circle cx="256.0" cy="256.0" r="226.0" stroke-width="28.0"/>
+      <g stroke-width="5.5" stroke-linecap="round"><line x1="265.18" y1="233.83" x2="332.54" y2="71.22"/><line x1="278.17" y1="246.82" x2="440.78" y2="179.46"/><line x1="278.17" y1="265.18" x2="440.78" y2="332.54"/><line x1="265.18" y1="278.17" x2="332.54" y2="440.78"/><line x1="246.82" y1="278.17" x2="179.46" y2="440.78"/><line x1="233.83" y1="265.18" x2="71.22" y2="332.54"/><line x1="233.83" y1="246.82" x2="71.22" y2="179.46"/><line x1="246.82" y1="233.83" x2="179.46" y2="71.22"/></g>
+    </g>
+    <g mask="url(#f-hub)" fill="#d62246">
+      <path d="M256.0,81.0 L276.0,256.0 L256.0,332.0 L236.0,256.0 Z" stroke="#d62246"
+            stroke-width="7.0" stroke-linejoin="round"/>
+      <circle cx="256.0" cy="256.0" r="44.0"/>
+    </g>
+  </g></svg>
+  <g fill="#d62246" font-family="Rockwell, Superclarendon, Georgia, serif"
+     font-weight="bold" font-size="60" letter-spacing="1">
+    <text x="470" y="232">LONDON DOCK</text>
+    <text x="470" y="304">COMPASS</text>
+  </g>
+  <text x="470" y="362" fill="#6e6b7c" font-family="Rockwell, Superclarendon, Georgia, serif"
+        font-size="21" letter-spacing="3.6">THE NEAREST DOCK, ON YOUR WRIST</text>
+</svg>

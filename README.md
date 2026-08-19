@@ -26,6 +26,25 @@ app/src/main/java/uk/co/maybeitssoftware/londondockcompass/
 
 Dock station coordinates are bundled as a raw resource (`app/src/main/res/raw/docklocations.json`) and refreshed periodically from the live TfL API by a scheduled workflow (see below).
 
+## Branding
+
+The mark is a compass needle set in a bicycle wheel, drawn in raspberry
+(`#D62246`). It is defined once, as geometry, in `scripts/generate_branding.py`;
+everything else is generated from it:
+
+```
+python3 scripts/generate_branding.py       # needs librsvg + webp: brew install librsvg webp
+```
+
+That writes the vector sources into `branding/`, then renders the launcher
+mipmaps (adaptive foreground, legacy square and round, every density), the Play
+Store icon, `res/drawable/splash_icon.xml`, and the store feature graphic. It
+also re-stamps the mark and wordmark onto the phone/tablet screenshots in
+`fastlane/`, which are otherwise real device captures. Re-running is idempotent.
+
+Edit the constants at the top of the script rather than the generated files —
+`splash_icon.xml` in particular is overwritten wholesale.
+
 ## Conventional Commits
 
 All commits must follow [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `chore:`, `refactor:`, etc.) — this drives the automatic versioning described below. It's enforced locally by a husky `commit-msg` git hook.

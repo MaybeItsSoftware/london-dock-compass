@@ -144,7 +144,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             val appColors = MaterialTheme.colors.copy(
                 background = Color.Black,
                 onBackground = Color.White,
-                primary = Color(0xFFDC241F) // Santander red
+                primary = Color(0xFFD62246) // Raspberry — the brand colour
             )
             MaterialTheme(colors = appColors) {
                 Scaffold(timeText = { TimeText() }) {
@@ -558,7 +558,7 @@ fun PermissionScreen(onRequest: () -> Unit) {
             Button(
                 onClick = onRequest,
                 colors = ButtonDefaults.buttonColors(
-                    backgroundColor = Color(0xFFDC241F)
+                    backgroundColor = Color(0xFFD62246)
                 )
             ) {
                 Text("Allow")
