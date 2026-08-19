@@ -6,8 +6,9 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Approach and divert alerts: the only channel that works at speed. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
 
     <application
         android:allowBackup="true"
@@ -15,6 +16,7 @@
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.DeviceDefault">
+
         <service
             android:name=".complication.MainComplicationService"
             android:exported="true"
@@ -30,19 +32,13 @@
             <meta-data
                 android:name="android.support.wearable.complications.UPDATE_PERIOD_SECONDS"
                 android:value="0" />
-            <meta-data
-                android:name="com.google.android.wearable.standalone"
-                android:value="true" />
         </service>
-
 
         <uses-library
             android:name="com.google.android.wearable"
             android:required="true" />
-        <!--
-               Set to true if your app is Standalone, that is, it does not require the handheld
-               app to run.
-        -->
+
+        <!-- Standalone: the watch app needs no phone-side counterpart. -->
         <meta-data
             android:name="com.google.android.wearable.standalone"
             android:value="true" />

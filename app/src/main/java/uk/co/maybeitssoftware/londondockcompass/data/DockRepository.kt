@@ -1,0 +1,108 @@
+package uk.co.maybeitssoftware.londondockcompass.data
+
+import android.content.Context
+import android.util.Log
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import uk.co.maybeitssoftware.londondockcompass.R
+import uk.co.maybeitssoftware.londondockcompass.domain.Dock
+import uk.co.maybeitssoftware.londondockcompass.domain.GeoPoint
+import uk.co.maybeitssoftware.londondockcompass.domain.distanceTo
+
+/** Where a set of docks came from, so the UI can be honest about how much to trust it. */
+enum class DockSource { LIVE, CACHED, BUNDLED }
+
+data class DockSnapshot(
+    val docks: List<Dock>,
+    val source: DockSource,
+    val fetchedAtMillis: Long
+) {
+    companion object {
+        val EMPTY = DockSnapshot(emptyList(), DockSource.BUNDLED, 0L)
+    }
+}
+
+/**
+ * The single way anything in this app asks "what docks are near here?".
+ *
+ * Shared by the screen, the tile and the complication, which is why the cache lives in a companion
+ * object: three surfaces asking the same question within a few seconds should cost one request.
+ */
+class DockRepository(context: Context) {
+
+    private val appContext = context.applicationContext
+    private val api = TflBikePointApi(appContext.getString(R.string.tfl_app_key))
+    private val bundled by lazy { BundledDockSource(appContext) }
+    private val cacheStore by lazy { SnapshotStore(appContext) }
+
+    /**
+     * Docks within [radiusMetres], live if we can get them.
+     *
+     * Falls back through a short-lived cache to the bundled coordinates, so the arrow keeps
+     * pointing somewhere sensible in a tunnel, on a dead network, or against a rate limit.
+     */
+    suspend fun docksNear(point: GeoPoint, radiusMetres: Int = DEFAULT_RADIUS_METRES): DockSnapshot {
+        val now = System.currentTimeMillis()
+        cached(point, now)?.let { return it }
+
+        return lock.withLock {
+            // Another caller may have refreshed while we waited for the lock.
+            cached(point, now)?.let { return@withLock it }
+            try {
+                val docks = api.docksNear(point, radiusMetres)
+                DockSnapshot(docks, DockSource.LIVE, System.currentTimeMillis()).also {
+                    memory = CachedAt(point, it)
+                    cacheStore.write(point, it)
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Live dock fetch failed, falling back", e)
+                staleFallback(point, now)
+                    ?: DockSnapshot(bundled.docksNear(point), DockSource.BUNDLED, now)
+            }
+        }
+    }
+
+    /** The last snapshot we managed to get, wherever it came from — for tiles and complications. */
+    fun lastKnown(): Pair<GeoPoint, DockSnapshot>? =
+        memory?.let { it.origin to it.snapshot } ?: cacheStore.read()
+
+    private fun cached(point: GeoPoint, now: Long): DockSnapshot? {
+        val held = memory ?: cacheStore.read()?.let { CachedAt(it.first, it.second) } ?: return null
+        val age = now - held.snapshot.fetchedAtMillis
+        val moved = point.distanceTo(held.origin)
+        return held.snapshot.takeIf { age < FRESH_MILLIS && moved < REFETCH_DISTANCE_METRES }
+    }
+
+    private fun staleFallback(point: GeoPoint, now: Long): DockSnapshot? {
+        val held = memory ?: cacheStore.read()?.let { CachedAt(it.first, it.second) } ?: return null
+        val age = now - held.snapshot.fetchedAtMillis
+        val moved = point.distanceTo(held.origin)
+        // Stale counts are still worth showing; counts from a mile away are not.
+        if (age > USABLE_MILLIS || moved > STALE_DISTANCE_METRES) return null
+        return held.snapshot.copy(source = DockSource.CACHED)
+    }
+
+    private data class CachedAt(val origin: GeoPoint, val snapshot: DockSnapshot)
+
+    companion object {
+        private const val TAG = "DockRepository"
+
+        /** Comfortably past the far side of a London block, without pulling in half the city. */
+        const val DEFAULT_RADIUS_METRES = 800
+
+        private const val FRESH_MILLIS = 30_000L
+        private const val USABLE_MILLIS = 10 * 60_000L
+        private const val REFETCH_DISTANCE_METRES = 150.0
+        private const val STALE_DISTANCE_METRES = 600.0
+
+        private val lock = Mutex()
+
+        @Volatile
+        private var memory: CachedAt? = null
+
+        /** Test seam: drops the process-wide cache. */
+        fun clearCache() {
+            memory = null
+        }
+    }
+}

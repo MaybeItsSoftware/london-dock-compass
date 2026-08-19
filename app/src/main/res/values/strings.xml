@@ -1,10 +1,13 @@
 <resources>
     <string name="app_name">London Dock Compass</string>
+
     <!--
-    This string is used for square devices and overridden by hello_world in
-    values-round/strings.xml for round devices.
+        Optional TfL API key. The BikePoint endpoints work unauthenticated but are rate limited per
+        IP address, which a watch on a busy shared network can trip. Register at
+        api-portal.tfl.gov.uk and paste the key here to get the higher quota.
     -->
-    <string name="hello_world">From the Square world,\nHello, %1$s!</string>
+    <string name="tfl_app_key" translatable="false"></string>
+
     <string name="tile_label">Example tile</string>
     <string name="complication_label">Example complication</string>
 </resources>
