@@ -23,6 +23,7 @@ lifecycle = "2.8.7"
 tiles = "1.4.1"
 protolayout = "1.2.1"
 concurrentFutures = "1.2.0"
+junit = "4.13.2"
 guava = "33.4.0-android"
 
 [libraries]
@@ -59,6 +60,7 @@ protolayout = { group = "androidx.wear.protolayout", name = "protolayout", versi
 protolayout-material = { group = "androidx.wear.protolayout", name = "protolayout-material", version.ref = "protolayout" }
 protolayout-expression = { group = "androidx.wear.protolayout", name = "protolayout-expression", version.ref = "protolayout" }
 concurrent-futures-ktx = { group = "androidx.concurrent", name = "concurrent-futures-ktx", version.ref = "concurrentFutures" }
+junit = { group = "junit", name = "junit", version.ref = "junit" }
 guava = { group = "com.google.guava", name = "guava", version.ref = "guava" }
 
 

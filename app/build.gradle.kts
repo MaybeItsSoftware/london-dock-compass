@@ -89,6 +89,7 @@ dependencies {
     implementation(libs.concurrent.futures.ktx)
     // Tiles hand back ListenableFuture; without real Guava the API type is an empty stub.
     implementation(libs.guava)
+    testImplementation(libs.junit)
     androidTestImplementation(platform(libs.compose.bom))
     androidTestImplementation(libs.ui.test.junit4)
     debugImplementation(libs.ui.tooling)
