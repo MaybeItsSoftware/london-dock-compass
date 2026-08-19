@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
@@ -53,14 +52,11 @@ import androidx.wear.ambient.AmbientLifecycleObserver
 import androidx.wear.compose.material.Button
 import androidx.wear.compose.material.ButtonDefaults
 import androidx.wear.compose.material.HorizontalPageIndicator
-import androidx.wear.compose.material.Icon
 import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.PageIndicatorState
 import androidx.wear.compose.material.Scaffold
 import androidx.wear.compose.material.Text
 import androidx.wear.compose.material.TimeText
-import androidx.wear.compose.material.ToggleChip
-import androidx.wear.compose.material.ToggleChipDefaults
 import com.github.davidmoten.geo.GeoHash
 import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationRequest
@@ -106,9 +102,6 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     // compassBearing is the direction the top of the watch is pointing (0=North, clockwise)
     private val compassBearing = mutableFloatStateOf(0f)
 
-    // Cycle mode: faster updates and keep screen on while cycling
-    private val cycleModeEnabled = mutableStateOf(false)
-
     private val rotationMatrix = FloatArray(9)
     private val orientationAngles = FloatArray(3)
 
@@ -150,8 +143,6 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 Scaffold(timeText = { TimeText() }) {
                     LondonDockCompassApp(
                         bearing = compassBearing.floatValue,
-                        cycleMode = cycleModeEnabled.value,
-                        onToggleCycleMode = ::toggleCycleMode,
                         isAmbient = isAmbient.value
                     )
                 }
@@ -159,22 +150,10 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         }
     }
 
-    private fun toggleCycleMode(enabled: Boolean) {
-        cycleModeEnabled.value = enabled
-        rotationVectorSensor?.let {
-            sensorManager.unregisterListener(this)
-            val delay = if (enabled) SensorManager.SENSOR_DELAY_FASTEST
-            else SensorManager.SENSOR_DELAY_UI // <-- Change this to UI
-            sensorManager.registerListener(this, it, delay)
-        }
-    }
-
     override fun onResume() {
         super.onResume()
         rotationVectorSensor?.let {
-            val delay = if (cycleModeEnabled.value) SensorManager.SENSOR_DELAY_FASTEST
-            else SensorManager.SENSOR_DELAY_UI // <-- Change this to UI
-            sensorManager.registerListener(this, it, delay)
+            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_FASTEST)
         }
     }
 
@@ -192,9 +171,8 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         val azimuthDeg = Math.toDegrees(orientationAngles[0].toDouble()).toFloat()
         val newBearing = (azimuthDeg + 360f) % 360f
 
-        // --> Lower the normal mode factor to 0.04f for a smooth, heavy glide
-        val lerpFactor = if (cycleModeEnabled.value) 0.5f else 0.04f
-        compassBearing.floatValue = lerpAngle(compassBearing.floatValue, newBearing, lerpFactor)
+        // Track the heading closely — the arrow has to keep up with a moving bike
+        compassBearing.floatValue = lerpAngle(compassBearing.floatValue, newBearing, 0.5f)
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
@@ -215,8 +193,6 @@ private fun loadStations(context: Context): Map<String, List<Station>> {
 @Composable
 fun LondonDockCompassApp(
     bearing: Float,
-    cycleMode: Boolean,
-    onToggleCycleMode: (Boolean) -> Unit,
     isAmbient: Boolean
 ) {
     val context = LocalContext.current
@@ -253,7 +229,7 @@ fun LondonDockCompassApp(
     }
 
     if (hasPermission) {
-        MainScreen(bearing, stations, cycleMode, onToggleCycleMode, isAmbient)
+        MainScreen(bearing, stations, isAmbient)
     } else {
         PermissionScreen { permissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION) }
     }
@@ -263,8 +239,6 @@ fun LondonDockCompassApp(
 fun MainScreen(
     bearing: Float,
     stations: Map<String, List<Station>>?,
-    cycleMode: Boolean,
-    onToggleCycleMode: (Boolean) -> Unit,
     isAmbient: Boolean
 ) {
     val context = LocalContext.current
@@ -278,11 +252,10 @@ fun MainScreen(
     // Keyed by station ID — concurrent-safe snapshot map, each entry filled in as API responds
     val liveStatuses = remember { mutableStateMapOf<Int, BikePointStatus>() }
 
-    DisposableEffect(cycleMode) {
-        view.keepScreenOn = cycleMode
-        onDispose {
-            view.keepScreenOn = false // Clean up when leaving or toggling off
-        }
+    // You're on a bike — the screen has to stay lit for the whole ride
+    DisposableEffect(Unit) {
+        view.keepScreenOn = true
+        onDispose { view.keepScreenOn = false }
     }
 
     val statusText = when {
@@ -313,8 +286,7 @@ fun MainScreen(
         }
     }
 
-    // Re-create location updates when cycle mode changes for faster/slower intervals
-    DisposableEffect(cycleMode) {
+    DisposableEffect(Unit) {
         if (ActivityCompat.checkSelfPermission(
                 context, Manifest.permission.ACCESS_FINE_LOCATION
             ) != PackageManager.PERMISSION_GRANTED
@@ -327,15 +299,9 @@ fun MainScreen(
             if (location != null) lastLocation = location
         }
 
-        val locationRequest = if (cycleMode) {
-            LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 1000L)
-                .setMinUpdateIntervalMillis(500L)
-                .build()
-        } else {
-            LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 5000L)
-                .setMinUpdateIntervalMillis(2000L)
-                .build()
-        }
+        val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 1000L)
+            .setMinUpdateIntervalMillis(500L)
+            .build()
 
         val locationCallback = object : LocationCallback() {
             override fun onLocationResult(result: LocationResult) {
@@ -350,32 +316,24 @@ fun MainScreen(
         onDispose { fusedLocationClient.removeLocationUpdates(locationCallback) }
     }
 
-    val totalPages = nearbyStations.size + 1  // page 0 = CycleModePage, pages 1+ = StationPages
-    val pagerState = rememberPagerState { totalPages }
-
-    var hasInitializedPager by remember { mutableStateOf(false) }
-
-    LaunchedEffect(nearbyStations) {
-        // Wait until stations are loaded and we haven't scrolled yet
-        if (nearbyStations.isNotEmpty() && !hasInitializedPager) {
-            pagerState.scrollToPage(1) // Jump to the closest station
-            hasInitializedPager = true // Ensure we only do this once
-        }
+    // Nothing to page through until the first fix lands — statusText says why.
+    if (nearbyStations.isEmpty()) {
+        StatusScreen(statusText)
+        return
     }
+
+    // Page 0 is the closest dock, so the pager opens on it with no scrolling needed.
+    val pagerState = rememberPagerState { nearbyStations.size }
 
     Box(modifier = Modifier.fillMaxSize()) {
         HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
-            if (page == 0) {
-                CycleModePage(cycleMode, onToggleCycleMode, statusText)
-            } else {
-                val station = nearbyStations[page - 1]
-                StationPage(
-                    station = station,
-                    status = liveStatuses[station.station.id],
-                    bearing = bearing,
-                    isAmbient = isAmbient
-                )
-            }
+            val station = nearbyStations[page]
+            StationPage(
+                station = station,
+                status = liveStatuses[station.station.id],
+                bearing = bearing,
+                isAmbient = isAmbient
+            )
         }
         HorizontalPageIndicator(
             pageIndicatorState = object : PageIndicatorState {
@@ -391,47 +349,15 @@ fun MainScreen(
 }
 
 @Composable
-fun CycleModePage(cycleMode: Boolean, onToggleCycleMode: (Boolean) -> Unit, statusText: String) {
+fun StatusScreen(statusText: String) {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
+        Text(
+            text = statusText,
+            style = MaterialTheme.typography.body2,
+            textAlign = TextAlign.Center,
+            color = Color.White,
             modifier = Modifier.padding(16.dp)
-        ) {
-            if (statusText.isNotEmpty()) {
-                Text(
-                    text = statusText,
-                    style = MaterialTheme.typography.body2,
-                    textAlign = TextAlign.Center,
-                    color = Color.White
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-            }
-
-            // Native Wear OS Toggle
-            ToggleChip(
-                modifier = Modifier.fillMaxWidth(0.9f),
-                checked = cycleMode,
-                onCheckedChange = onToggleCycleMode,
-                label = {
-                    Text(
-                        text = "Cycle Mode",
-                        style = MaterialTheme.typography.button,
-                        color = Color.White
-                    )
-                },
-                toggleControl = {
-                    Icon(
-                        imageVector = ToggleChipDefaults.switchIcon(checked = cycleMode),
-                        contentDescription = if (cycleMode) "On" else "Off"
-                    )
-                },
-                colors = ToggleChipDefaults.toggleChipColors(
-                    checkedStartBackgroundColor = MaterialTheme.colors.primary,
-                    checkedEndBackgroundColor = Color(0xFF333333) // Dark grey when off
-                )
-            )
-        }
+        )
     }
 }
 
