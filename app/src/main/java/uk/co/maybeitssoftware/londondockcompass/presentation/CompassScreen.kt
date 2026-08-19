@@ -75,6 +75,11 @@ private sealed interface Page {
     data class Nearby(override val ranked: RankedDock) : Page {
         override val key get() = ranked.id
     }
+
+    /** A saved dock you are nowhere near — home, or work, or wherever you are heading. */
+    data class Saved(override val ranked: RankedDock) : Page {
+        override val key get() = ranked.id
+    }
 }
 
 private const val PINNED_KEY = -1
@@ -100,10 +105,12 @@ fun CompassScreen(
         return
     }
 
-    val pages = remember(state.destination, state.docks) {
+    // Destination first, then what is around you, then the saved docks you are heading for.
+    val pages = remember(state.destination, state.docks, state.savedDocks) {
         buildList {
             state.destination?.let { add(Page.Pinned(it)) }
             state.docks.forEach { add(Page.Nearby(it)) }
+            state.savedDocks.forEach { add(Page.Saved(it)) }
         }
     }
     if (pages.isEmpty()) {
@@ -148,6 +155,16 @@ fun CompassScreen(
                     heading = heading,
                     isFavourite = page.ranked.id in state.favourites,
                     isAmbient = isAmbient,
+                    onOpenActions = { showActions = true }
+                )
+
+                is Page.Saved -> DockCard(
+                    dock = page.ranked,
+                    mode = state.mode,
+                    heading = heading,
+                    isAmbient = isAmbient,
+                    eyebrow = "★ SAVED",
+                    eyebrowColor = Palette.Amber,
                     onOpenActions = { showActions = true }
                 )
             }

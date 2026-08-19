@@ -34,6 +34,12 @@ import kotlin.math.roundToInt
 data class CompassUiState(
     val mode: RideMode = RideMode.HIRE,
     val docks: List<RankedDock> = emptyList(),
+    /**
+     * Saved docks that are not already in [docks] — the ones you are heading towards rather than
+     * standing next to. Without these, a saved dock is only visible once you no longer need to be
+     * told where it is.
+     */
+    val savedDocks: List<RankedDock> = emptyList(),
     val destination: DestinationState? = null,
     val favourites: Set<Int> = emptySet(),
     val source: DockSource = DockSource.BUNDLED,
@@ -80,6 +86,9 @@ class CompassViewModel(app: Application) : AndroidViewModel(app) {
     private var position: GeoPoint? = prefs.lastKnownPosition
     private var snapshot: DockSnapshot = DockSnapshot.EMPTY
     private var destinationDock: Dock? = null
+
+    /** Saved docks fetched by id, for the ones too far away to be in the sweep. */
+    private val savedDocks = mutableMapOf<Int, Dock>()
     private var refreshJob: Job? = null
 
     /** False while [position] is only the seed from the last session. */
@@ -119,7 +128,10 @@ class CompassViewModel(app: Application) : AndroidViewModel(app) {
 
     fun toggleFavourite(dockId: Int) {
         prefs.toggleFavourite(dockId)
+        if (dockId !in prefs.favourites) savedDocks.remove(dockId)
         _state.update { it.copy(favourites = prefs.favourites) }
+        recompute()
+        refresh()
     }
 
     fun pinDestination(dock: RankedDock) {
@@ -147,6 +159,7 @@ class CompassViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 snapshot = repository.docksNear(here)
                 refreshDestinationDock()
+                refreshSavedDocks()
             } catch (e: Exception) {
                 Log.w(TAG, "Refresh failed", e)
             } finally {
@@ -170,6 +183,23 @@ class CompassViewModel(app: Application) : AndroidViewModel(app) {
             ?: destinationDock
     }
 
+    /**
+     * Keeps counts current for saved docks the sweep did not reach.
+     *
+     * A commuter has two or three of these, so it is two or three requests — and it is what lets
+     * you check your home dock before setting off rather than after arriving at it.
+     */
+    private suspend fun refreshSavedDocks() {
+        val wanted = prefs.favourites - snapshot.docks.map { it.id }.toSet()
+        savedDocks.keys.retainAll(wanted)
+        wanted.forEach { id ->
+            runCatching { api.dock(id) }
+                .onFailure { Log.w(TAG, "Saved dock $id refresh failed", it) }
+                .getOrNull()
+                ?.let { savedDocks[id] = it }
+        }
+    }
+
     private fun recompute() {
         val here = position
         val mode = _state.value.mode
@@ -178,24 +208,31 @@ class CompassViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
 
+        fun rank(dock: Dock) = RankedDock(
+            dock = dock,
+            distanceMetres = here.distanceTo(dock.position).roundToInt(),
+            bearingDegrees = here.bearingTo(dock.position),
+            count = dock.availability?.countFor(mode)
+        )
+
         val ranked = rankDocks(here, snapshot.docks, mode)
         val pinned = prefs.destination
         val destinationState = pinned?.let { destination ->
-            val dock = destinationDock
-            val rankedDestination = dock?.let {
-                RankedDock(
-                    dock = it,
-                    distanceMetres = here.distanceTo(it.position).roundToInt(),
-                    bearingDegrees = here.bearingTo(it.position),
-                    count = it.availability?.countFor(mode)
-                )
-            }
+            val rankedDestination = destinationDock?.let(::rank)
             DestinationState(destination, rankedDestination, destinationHealth(rankedDestination))
         }
+
+        // Saved docks already in the deck are left there; only the far-off ones need a page.
+        val nearbyIds = ranked.map { it.id }.toSet()
+        val saved = savedDocks.values
+            .filter { it.id !in nearbyIds && it.id != pinned?.dockId }
+            .map(::rank)
+            .sortedBy { it.distanceMetres }
 
         _state.update {
             it.copy(
                 docks = ranked,
+                savedDocks = saved,
                 destination = destinationState,
                 favourites = prefs.favourites,
                 source = snapshot.source,

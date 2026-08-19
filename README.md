@@ -28,10 +28,12 @@ watch face. The complication puts bikes-or-spaces and distance on the face itsel
 long text, a ranged arc, or an icon — because eleven bikes out of a rack of twelve reads very
 differently from eleven out of sixty.
 
-**Saved docks, the crown, and a screen reader.** Tap a card to save a dock or pin it. The rotary
-crown pages the deck. Every card carries a spoken description with the direction given relative to
-the way you are facing — "140m ahead and to your right, 19 bikes" — because an absolute bearing is
-no use to anyone who cannot see the arrow.
+**Saved docks, the crown, and a screen reader.** Tap a card to save a dock or pin it as your
+destination. Saved docks keep their place at the end of the deck with live counts wherever you are,
+not just when you are standing next to one — which is how you check your home dock and pin it as
+the destination *before* setting off. The rotary crown pages the deck. Every card carries a spoken
+description with the direction given relative to the way you are facing — "140m ahead and to your
+right, 19 bikes" — because an absolute bearing is no use to anyone who cannot see the arrow.
 
 **Honest when it is guessing.** Counts come with the time TfL observed them, and the app says
 CACHED, NO LIVE DATA or how many minutes old a figure is rather than presenting a stale number as a
