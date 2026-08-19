@@ -1,6 +1,42 @@
 # London Dock Compass
 
-A native Kotlin + Jetpack Compose **Wear OS** app that points you to nearby Santander Cycles docking stations and shows live bike/dock availability, right on your wrist. It uses on-watch location + a compass heading to find the closest dock, then queries the TfL BikePoint API for real-time bike/e-bike/empty-dock counts — surfaced in the main app UI and as a watch face complication.
+A native Kotlin + Jetpack Compose **Wear OS** app that points you to the Santander Cycles dock you
+actually need, with live availability, right on your wrist. On-watch location and a compass heading
+find the docks around you; the TfL BikePoint API supplies real-time bike, e-bike and space counts —
+surfaced in the app, on a tile, and as a watch face complication.
+
+## What it does
+
+**Bikes, e-bikes or spaces — one tap apart.** A dock with nineteen bikes and no spaces is the best
+dock on the street if you need a bike, and the worst one on it if you are trying to end a journey.
+The mode chip at the top of the screen switches what "nearest" means: docks that can help come
+first, docks that cannot sink to the back of the deck marked EMPTY or FULL, and docks that are
+locked or uninstalled are dropped entirely.
+
+**A destination that watches itself.** Pin the dock you are riding to and it leads the deck, with
+its space count checked on every refresh. When it drops to the last couple your wrist buzzes; when
+it fills, it buzzes differently and turns raspberry — early enough that diverting is still cheap.
+Arriving to find a full dock is the defining frustration of London hire bikes, and it is the one
+thing this app exists to prevent.
+
+**Alerts you can feel.** You cannot read a watch at fifteen miles an hour in traffic. Two taps at
+100m, a longer settle on arrival, an insistent triple if the destination fills up. Each fires once
+per crossing, with hysteresis, so a fix wobbling on a threshold does not buzz your wrist off.
+
+**Glanceable surfaces.** A tile lists the three nearest docks with live counts, one swipe from the
+watch face. The complication puts bikes-or-spaces and distance on the face itself, as short text,
+long text, a ranged arc, or an icon — because eleven bikes out of a rack of twelve reads very
+differently from eleven out of sixty.
+
+**Saved docks, the crown, and a screen reader.** Tap a card to save a dock or pin it. The rotary
+crown pages the deck. Every card carries a spoken description with the direction given relative to
+the way you are facing — "140m ahead and to your right, 19 bikes" — because an absolute bearing is
+no use to anyone who cannot see the arrow.
+
+**Honest when it is guessing.** Counts come with the time TfL observed them, and the app says
+CACHED, NO LIVE DATA or how many minutes old a figure is rather than presenting a stale number as a
+live one. With no network it falls back to the bundled dock coordinates and shows availability as
+unknown instead of as zero.
 
 ## Getting started
 
@@ -19,12 +55,38 @@ Build config (from `app/build.gradle.kts`): `compileSdk = 35`, `minSdk = 30`, `t
 
 ```
 app/src/main/java/uk/co/maybeitssoftware/londondockcompass/
-├── presentation/        MainActivity.kt (Compose UI, location + sensor handling, ambient mode) and theme
-├── data/                BikePointRepository.kt (TfL BikePoint API client), TfLModels.kt
-└── complication/        MainComplicationService.kt (watch face complication)
+├── domain/              Pure Kotlin: geometry, ranking, ride modes, proximity bands, destination
+│                        health. No Android imports, so it is all unit-testable on the JVM.
+├── data/                TflBikePointApi (radius query), DockRepository (live → cache → bundled),
+│                        SnapshotStore, RiderPreferences, RiderLocation
+├── presentation/        MainActivity, CompassViewModel, CompassScreen, CompassSensor, Haptics, theme
+├── complication/        NearestDockComplicationService
+└── tile/                NearbyDocksTileService
 ```
 
-Dock station coordinates are bundled as a raw resource (`app/src/main/res/raw/docklocations.json`) and refreshed periodically from the live TfL API by a scheduled workflow (see below).
+### Where dock data comes from
+
+One request does the work: `GET /BikePoint?lat=&lon=&radius=` returns every dock within the radius
+*with* its live counts, its position, and the timestamp TfL last observed it. That single call
+replaced a bundled coordinate lookup plus one status request per dock, and it means new docks appear
+without shipping an app update.
+
+Three tiers, in order: the live radius query; a short-lived snapshot cache shared by the app, the
+tile and the complication (in memory, and on disk so cold-started surfaces render immediately); and
+finally the bundled `app/src/main/res/raw/docklocations.json`, which is refreshed weekly from TfL by
+a scheduled workflow (see below) and exists purely so the arrow still points somewhere sensible in a
+tunnel or against a rate limit.
+
+The BikePoint endpoints work unauthenticated but are rate limited per IP. Register at
+[api-portal.tfl.gov.uk](https://api-portal.tfl.gov.uk/) and put the key in `tfl_app_key`
+(`app/src/main/res/values/strings.xml`) for the higher quota.
+
+### Tests
+
+`./gradlew test` runs JVM unit tests over the `domain` package and the presentation-layer
+formatters: haversine distance (cross-checked against a figure TfL returns for the same pair),
+bearings, the angle wraparound that a naive lerp gets wrong at 359°, mode-dependent ranking,
+proximity hysteresis, destination-alert escalation, and the spoken accessibility descriptions.
 
 ## Branding
 
