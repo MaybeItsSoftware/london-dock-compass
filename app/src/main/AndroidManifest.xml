@@ -17,9 +17,12 @@
         android:supportsRtl="true"
         android:theme="@android:style/Theme.DeviceDefault">
 
+        <!-- Bikes or spaces at the nearest dock, on the watch face itself. -->
         <service
-            android:name=".complication.MainComplicationService"
+            android:name=".complication.NearestDockComplicationService"
+            android:description="@string/complication_description"
             android:exported="true"
+            android:icon="@drawable/ic_dock"
             android:label="@string/complication_label"
             android:permission="com.google.android.wearable.permission.BIND_COMPLICATION_PROVIDER">
             <intent-filter>
@@ -28,10 +31,32 @@
 
             <meta-data
                 android:name="android.support.wearable.complications.SUPPORTED_TYPES"
-                android:value="SHORT_TEXT" />
+                android:value="SHORT_TEXT,RANGED_VALUE,LONG_TEXT,MONOCHROMATIC_IMAGE" />
+            <!--
+                Five minutes is the platform's floor for a periodic refresh. Availability moves
+                faster than that, but a watch face is a glance, not a live feed — and the app
+                refreshes properly the moment it is opened.
+            -->
             <meta-data
                 android:name="android.support.wearable.complications.UPDATE_PERIOD_SECONDS"
-                android:value="0" />
+                android:value="300" />
+        </service>
+
+        <!-- The three nearest docks, one swipe from the watch face. -->
+        <service
+            android:name=".tile.NearbyDocksTileService"
+            android:description="@string/tile_description"
+            android:exported="true"
+            android:icon="@drawable/ic_dock"
+            android:label="@string/tile_label"
+            android:permission="com.google.android.wearable.permission.BIND_TILE_PROVIDER">
+            <intent-filter>
+                <action android:name="androidx.wear.tiles.action.BIND_TILE_PROVIDER" />
+            </intent-filter>
+
+            <meta-data
+                android:name="androidx.wear.tiles.PREVIEW"
+                android:resource="@drawable/splash_icon" />
         </service>
 
         <uses-library
