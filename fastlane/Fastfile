@@ -14,24 +14,78 @@ platform :android do
       aab:                     File.join(ROOT, "app", "build", "outputs", "bundle", "release", "app-release.aab"),
       json_key_data:           ENV["PLAY_SERVICE_ACCOUNT_JSON"],
       skip_upload_apk:         true,
+      # The store listing is global, not per-track: these go live as soon as the
+      # edit commits, whatever track the bundle lands on. Uploading them here is
+      # what keeps the storefront in step with branding/ -- with all three
+      # skipped, regenerating assets never reached Play and the listing sat on
+      # whatever was last uploaded by hand.
+      #
+      # metadata (title/descriptions) stays skipped because there are no .txt
+      # files under fastlane/metadata/android/en-GB -- supply would have nothing
+      # to send. Run `fastlane android download_metadata` to seed them from the
+      # live listing first, then flip this to false.
       skip_upload_metadata:    true,
-      skip_upload_images:      true,
-      skip_upload_screenshots: true,
+      skip_upload_images:      false,
+      skip_upload_screenshots: false,
     )
   end
 
-  desc "Promote the current Wear internal-track build to Wear production"
-  lane :promote do
+  # Track ids are case-sensitive and this app's closed-testing track is "Alpha"
+  # with a capital A (Play Console: "Closed testing - Alpha"). Passing "alpha"
+  # fails with "Google Api Error: Invalid request - Track not found: wear:alpha".
+  # The live ids are: wear:internal, wear:Alpha, wear:beta, wear:production.
+  desc "Promote the current Wear internal-track build to another Wear track"
+  desc "  fastlane android promote               # -> wear:production"
+  desc "  fastlane android promote track:Alpha   # -> wear:Alpha (closed testing)"
+  lane :promote do |options|
+    target = options[:track] || "production"
+    # "completed" is what supply defaults to. A track that has never had a live
+    # rollout only accepts "draft" -- the API rejects completed there with
+    # "Only releases with status draft may be created on draft app". Pass
+    # status:draft for a first-ever release on a track, then finish the rollout
+    # once by hand in Play Console (countries, policies, "Start rollout").
+    status = options[:status] || "completed"
+
     upload_to_play_store(
       package_name:            APP_ID,
       track:                   "wear:internal",
-      track_promote_to:        "wear:production",
+      track_promote_to:        "wear:#{target}",
+      track_promote_release_status: status,
       json_key_data:           ENV["PLAY_SERVICE_ACCOUNT_JSON"],
       skip_upload_apk:         true,
       skip_upload_aab:         true,
       skip_upload_metadata:    true,
       skip_upload_images:      true,
       skip_upload_screenshots: true,
+    )
+  end
+
+  # Refresh the storefront on its own. The listing is global and not tied to a
+  # release, so this needs no build and no track -- useful after regenerating
+  # branding/ when the current version code is already live and a fresh upload
+  # would be rejected as a duplicate.
+  desc "Push store listing images/screenshots to Play without shipping a build"
+  lane :upload_assets do |options|
+    # supply anchors a listing edit to a release even when changelogs are
+    # skipped -- without a version code it dies with "Could not find release
+    # for version code '' to update changelog". Read the current one straight
+    # out of the gradle file so this can't drift.
+    version_code = options[:version_code] ||
+                   File.read(File.join(ROOT, "app", "build.gradle.kts"))[/versionCode\s*=\s*(\d+)/, 1]
+    UI.user_error!("could not read versionCode from app/build.gradle.kts") unless version_code
+
+    upload_to_play_store(
+      package_name:            APP_ID,
+      json_key_data:           ENV["PLAY_SERVICE_ACCOUNT_JSON"],
+      validate_only:           options[:validate_only] || false,
+      track:                   options[:track] || "wear:internal",
+      version_code:            version_code,
+      skip_upload_apk:         true,
+      skip_upload_aab:         true,
+      skip_upload_changelogs:  true,
+      skip_upload_metadata:    true,
+      skip_upload_images:      false,
+      skip_upload_screenshots: false,
     )
   end
 

@@ -24,6 +24,7 @@ keybackup.txt
 # Fastlane / Ruby
 .bundle/
 vendor/bundle/
+fastlane/README.md
 fastlane/report.xml
 fastlane/Preview.html
 fastlane/screenshots/**/*.png
