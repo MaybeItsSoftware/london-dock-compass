@@ -1,0 +1,20 @@
+name: TEMP list Play tracks
+
+on:
+  workflow_dispatch:
+
+jobs:
+  tracks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Ruby + Fastlane
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+      - name: List tracks
+        run: bundle exec fastlane android list_tracks
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_STORE_SERVICE_ACCOUNT_JSON }}

@@ -37,4 +37,28 @@ platform :android do
   lane :download_metadata do
     sh("bundle exec fastlane supply init --json_key_data '#{ENV["PLAY_SERVICE_ACCOUNT_JSON"]}' --metadata_path '#{File.join(__dir__, "metadata", "android")}'")
   end
+
+  desc "TEMP: list the tracks Play exposes for this app"
+  lane :list_tracks do
+    require "supply"
+    require "supply/client"
+
+    Supply.config = FastlaneCore::Configuration.create(
+      Supply::Options.available_options,
+      {
+        package_name:  APP_ID,
+        json_key_data: ENV["PLAY_SERVICE_ACCOUNT_JSON"],
+        track:         "internal",
+      }
+    )
+
+    client = Supply::Client.make_from_config
+    client.begin_edit(package_name: APP_ID)
+    listing = client.tracks.map do |t|
+      codes = (t.releases || []).flat_map { |r| r.version_codes || [] }
+      "#{t.track}  releases=#{(t.releases || []).map(&:status).join(",")}  codes=#{codes.join(",")}"
+    end
+    UI.important("AVAILABLE TRACKS:\n#{listing.join("\n")}")
+    client.abort_current_edit
+  end
 end
