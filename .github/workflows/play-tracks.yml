@@ -1,7 +1,8 @@
 name: TEMP list Play tracks
 
 on:
-  workflow_dispatch:
+  push:
+    branches: [fix/ci-ruby-version]
 
 jobs:
   tracks:
