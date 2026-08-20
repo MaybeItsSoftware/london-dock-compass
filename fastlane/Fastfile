@@ -2,13 +2,15 @@ ROOT   = File.expand_path("..", __dir__)
 APP_ID = "uk.co.maybeitssoftware.londondockcompass"
 
 platform :android do
-  desc "Build a signed release AAB and upload it to the Play internal testing track"
+  # This is a Wear-only app (the manifest requires android.hardware.type.watch), so Play
+  # keeps it on form-factor tracks and rejects the artifact on the plain ones.
+  desc "Build a signed release AAB and upload it to the Play Wear internal testing track"
   lane :beta do
     sh("cd #{ROOT} && ./gradlew bundleRelease")
 
     upload_to_play_store(
       package_name:            APP_ID,
-      track:                   "internal",
+      track:                   "wear:internal",
       aab:                     File.join(ROOT, "app", "build", "outputs", "bundle", "release", "app-release.aab"),
       json_key_data:           ENV["PLAY_SERVICE_ACCOUNT_JSON"],
       skip_upload_apk:         true,
@@ -18,12 +20,12 @@ platform :android do
     )
   end
 
-  desc "Promote the current internal-track build to production"
+  desc "Promote the current Wear internal-track build to Wear production"
   lane :promote do
     upload_to_play_store(
       package_name:            APP_ID,
-      track:                   "internal",
-      track_promote_to:        "production",
+      track:                   "wear:internal",
+      track_promote_to:        "wear:production",
       json_key_data:           ENV["PLAY_SERVICE_ACCOUNT_JSON"],
       skip_upload_apk:         true,
       skip_upload_aab:         true,
