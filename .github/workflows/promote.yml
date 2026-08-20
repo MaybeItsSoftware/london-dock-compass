@@ -19,6 +19,7 @@ jobs:
       - name: Set up Ruby + Fastlane
         uses: ruby/setup-ruby@v1
         with:
+          ruby-version: '3.3'
           bundler-cache: true
       - name: Promote internal → production
         run: bundle exec fastlane android promote

@@ -68,6 +68,7 @@ jobs:
       - name: Set up Ruby + Fastlane
         uses: ruby/setup-ruby@v1
         with:
+          ruby-version: '3.3'
           bundler-cache: true
       - name: Set up JDK
         uses: actions/setup-java@v4
