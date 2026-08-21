@@ -75,10 +75,11 @@ class SnapshotStoreTest {
                        "inService":true,"bikes":4,"emptyDocks":6}]}
         """.trimIndent()
         val decoded = snapshotJson.decodeFromString<StoredSnapshot>(legacy).docks.single().toDock()
+        val availability = decoded.availability!!
 
-        assertEquals(4, decoded.availability!!.bikes)
-        assertEquals(6, decoded.availability!!.emptyDocks)
-        assertEquals(10, decoded.availability!!.totalDocks)
-        assertEquals(4, decoded.availability!!.standardBikes)
+        assertEquals(4, availability.bikes)
+        assertEquals(6, availability.emptyDocks)
+        assertEquals(10, availability.totalDocks)
+        assertEquals(4, availability.standardBikes)
     }
 }

@@ -142,9 +142,10 @@ class TflBikePointParsingTest {
             )
         ).single().toDock()!!
 
-        assertEquals(15, dock.availability!!.totalDocks)
+        val availability = dock.availability!!
+        assertEquals(15, availability.totalDocks)
         // Standard bikes default to the whole count rather than to zero.
-        assertEquals(6, dock.availability!!.standardBikes)
+        assertEquals(6, availability.standardBikes)
     }
 
     @Test
