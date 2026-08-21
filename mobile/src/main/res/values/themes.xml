@@ -1,0 +1,6 @@
+<resources>
+    <!-- Compose owns the colours; this only has to not flash white before the first frame. -->
+    <style name="Theme.LondonDockCompass" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/paper</item>
+    </style>
+</resources>

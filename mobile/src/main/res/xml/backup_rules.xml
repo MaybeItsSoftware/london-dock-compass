@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Auto Backup for API 30. The privacy policy says coordinates are processed strictly on the
+    device and never transmitted, so anything derived from where the rider is stays out of the
+    cloud: the last fix, and the dock snapshot that was fetched around it.
+
+    What the rider chose — mode, saved docks, pinned destination — is not a position and is worth
+    restoring onto a new watch, so rider_prefs is left in.
+-->
+<full-backup-content>
+    <exclude domain="sharedpref" path="rider_location.xml" />
+    <exclude domain="sharedpref" path="dock_snapshot.xml" />
+</full-backup-content>

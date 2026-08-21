@@ -26,7 +26,7 @@ import uk.co.maybeitssoftware.londondockcompass.data.riderPosition
 import uk.co.maybeitssoftware.londondockcompass.domain.RankedDock
 import uk.co.maybeitssoftware.londondockcompass.domain.RideMode
 import uk.co.maybeitssoftware.londondockcompass.domain.rankDocks
-import uk.co.maybeitssoftware.londondockcompass.presentation.theme.Brand
+import uk.co.maybeitssoftware.londondockcompass.theme.Brand
 
 /**
  * The three nearest docks, one swipe from the watch face.

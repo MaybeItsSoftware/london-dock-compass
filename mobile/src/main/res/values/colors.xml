@@ -1,0 +1,4 @@
+<resources>
+    <!-- Chalk: warm off-white, the same paper the rest of the house style uses. -->
+    <color name="paper">#FAF8F4</color>
+</resources>

@@ -1,0 +1,4 @@
+<resources>
+    <!-- The same grape hue pulled down, never a neutral grey. -->
+    <color name="paper">#1C1A23</color>
+</resources>

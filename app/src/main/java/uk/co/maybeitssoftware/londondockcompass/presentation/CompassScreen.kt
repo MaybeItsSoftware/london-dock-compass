@@ -60,7 +60,7 @@ import uk.co.maybeitssoftware.londondockcompass.domain.RideMode
 import uk.co.maybeitssoftware.londondockcompass.domain.formatDistance
 import uk.co.maybeitssoftware.londondockcompass.domain.isStaleAt
 import uk.co.maybeitssoftware.londondockcompass.domain.normaliseDegrees
-import uk.co.maybeitssoftware.londondockcompass.presentation.theme.Brand
+import uk.co.maybeitssoftware.londondockcompass.theme.Brand
 import uk.co.maybeitssoftware.londondockcompass.presentation.theme.MicroLabel
 import uk.co.maybeitssoftware.londondockcompass.presentation.theme.Palette
 
@@ -398,10 +398,9 @@ private fun DockCard(
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = when {
-                        dock.count == null -> "NO LIVE DATA"
-                        dock.count <= 0 -> mode.exhaustedLabel
-                        else -> "${dock.count} ${mode.label}"
+                    text = when (val count = dock.count) {
+                        null -> "NO LIVE DATA"
+                        else -> if (count <= 0) mode.exhaustedLabel else "$count ${mode.label}"
                     },
                     style = MicroLabel,
                     color = countColor
@@ -611,10 +610,12 @@ private fun countColor(count: Int?): Color = Color(Brand.availabilityColour(coun
  * right" — because an absolute bearing is no use to anyone who cannot see the arrow.
  */
 internal fun RankedDock.describe(mode: RideMode, relativeBearing: Float): String {
+    // Bound to a local because Kotlin will not smart-cast a val declared in another module.
+    val available = count
     val availability = when {
-        count == null -> "availability unknown"
-        count <= 0 -> mode.exhaustedLabel.lowercase()
-        else -> mode.describe(count)
+        available == null -> "availability unknown"
+        available <= 0 -> mode.exhaustedLabel.lowercase()
+        else -> mode.describe(available)
     }
     return "$name, ${formatDistance(distanceMetres)} ${relativeBearing.asSpokenDirection()}, $availability"
 }

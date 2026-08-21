@@ -1,4 +1,4 @@
-package uk.co.maybeitssoftware.londondockcompass.presentation.theme
+package uk.co.maybeitssoftware.londondockcompass.theme
 
 import uk.co.maybeitssoftware.londondockcompass.domain.TIGHT_THRESHOLD
 

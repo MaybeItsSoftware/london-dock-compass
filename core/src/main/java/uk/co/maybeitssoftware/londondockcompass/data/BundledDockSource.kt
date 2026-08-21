@@ -4,7 +4,7 @@ import android.content.Context
 import com.github.davidmoten.geo.GeoHash
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import uk.co.maybeitssoftware.londondockcompass.R
+import uk.co.maybeitssoftware.londondockcompass.core.R
 import uk.co.maybeitssoftware.londondockcompass.domain.Dock
 import uk.co.maybeitssoftware.londondockcompass.domain.GeoPoint
 

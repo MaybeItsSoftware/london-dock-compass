@@ -20,7 +20,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import uk.co.maybeitssoftware.londondockcompass.R
+import uk.co.maybeitssoftware.londondockcompass.core.R
 import uk.co.maybeitssoftware.londondockcompass.data.DockRepository
 import uk.co.maybeitssoftware.londondockcompass.data.DockSnapshot
 import uk.co.maybeitssoftware.londondockcompass.data.DockSource

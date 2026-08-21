@@ -3,6 +3,10 @@ package uk.co.maybeitssoftware.londondockcompass.data
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.core.content.edit
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.conflate
 import uk.co.maybeitssoftware.londondockcompass.domain.Destination
 import uk.co.maybeitssoftware.londondockcompass.domain.GeoPoint
 import uk.co.maybeitssoftware.londondockcompass.domain.RideMode
@@ -34,6 +38,19 @@ class RiderPreferences(context: Context) {
         }
     }
 
+    /**
+     * Emits whenever anything here changes, from any source.
+     *
+     * Includes writes made by [RiderStateListenerService] when the other device publishes, which
+     * runs in this same process — so a dock saved on the phone lights up the watch's deck without
+     * either side polling.
+     */
+    val changes: Flow<Unit> = callbackFlow {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ -> trySend(Unit) }
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        awaitClose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }.conflate()
+
     /** Reopening the app mid-journey should not silently forget you were looking for a space. */
     var mode: RideMode
         get() = runCatching { RideMode.valueOf(prefs.getString(KEY_MODE, null)!!) }
@@ -46,7 +63,10 @@ class RiderPreferences(context: Context) {
             .orEmpty()
             .mapNotNull(String::toIntOrNull)
             .toSet()
-        set(value) = prefs.edit { putStringSet(KEY_FAVOURITES, value.map(Int::toString).toSet()) }
+        set(value) = prefs.edit {
+            putStringSet(KEY_FAVOURITES, value.map(Int::toString).toSet())
+            putLong(KEY_UPDATED_AT, System.currentTimeMillis())
+        }
 
     fun toggleFavourite(dockId: Int): Boolean {
         val current = favourites
@@ -70,6 +90,7 @@ class RiderPreferences(context: Context) {
             )
         }
         set(value) = prefs.edit {
+            putLong(KEY_UPDATED_AT, System.currentTimeMillis())
             if (value == null) {
                 remove(KEY_DESTINATION_ID)
                 remove(KEY_DESTINATION_NAME)
@@ -87,6 +108,34 @@ class RiderPreferences(context: Context) {
                 remove(LEGACY_KEY_DESTINATION_LON)
             }
         }
+
+    /** Everything that travels between devices, stamped so a conflict has an answer. */
+    fun snapshot(): RiderState = RiderState(
+        favourites = favourites,
+        destination = destination,
+        updatedAtMillis = prefs.getLong(KEY_UPDATED_AT, 0L)
+    )
+
+    /**
+     * Takes the other device's state if it is newer than ours. Returns whether anything changed.
+     *
+     * The staleness check is what makes this safe to call on every incoming event, including the
+     * echo of our own publish.
+     */
+    fun merge(remote: RiderState): Boolean {
+        if (remote.updatedAtMillis <= prefs.getLong(KEY_UPDATED_AT, 0L)) return false
+        val local = snapshot()
+        if (local.favourites == remote.favourites && local.destination == remote.destination) {
+            // Same content, newer stamp: adopt the stamp so we stop reconsidering it, but do not
+            // announce a change nobody can see.
+            prefs.edit { putLong(KEY_UPDATED_AT, remote.updatedAtMillis) }
+            return false
+        }
+        favourites = remote.favourites
+        destination = remote.destination
+        prefs.edit { putLong(KEY_UPDATED_AT, remote.updatedAtMillis) }
+        return true
+    }
 
     /**
      * The last fix the foreground app had.
@@ -109,6 +158,7 @@ class RiderPreferences(context: Context) {
         const val KEY_DESTINATION_NAME = "destination_name"
         const val KEY_DESTINATION_LAT = "destination_lat_bits"
         const val KEY_DESTINATION_LON = "destination_lon_bits"
+        const val KEY_UPDATED_AT = "updated_at"
         const val KEY_LAT = "last_lat_bits"
         const val KEY_LON = "last_lon_bits"
 

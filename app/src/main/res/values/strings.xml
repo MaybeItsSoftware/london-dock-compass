@@ -1,13 +1,6 @@
 <resources>
     <string name="app_name">London Dock Compass</string>
 
-    <!--
-        Optional TfL API key. The BikePoint endpoints work unauthenticated but are rate limited per
-        IP address, which a watch on a busy shared network can trip. Register at
-        api-portal.tfl.gov.uk and paste the key here to get the higher quota.
-    -->
-    <string name="tfl_app_key" translatable="false"></string>
-
     <string name="tile_label">Nearby docks</string>
     <string name="tile_description">The closest Santander Cycles docks, with live bikes and spaces.</string>
     <string name="complication_label">Nearest dock</string>
