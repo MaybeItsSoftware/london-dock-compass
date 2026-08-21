@@ -20,9 +20,9 @@ import uk.co.maybeitssoftware.londondockcompass.data.DockRepository
 import uk.co.maybeitssoftware.londondockcompass.data.RiderPreferences
 import uk.co.maybeitssoftware.londondockcompass.data.riderPosition
 import uk.co.maybeitssoftware.londondockcompass.domain.RankedDock
+import uk.co.maybeitssoftware.londondockcompass.domain.formatDistance
 import uk.co.maybeitssoftware.londondockcompass.domain.RideMode
 import uk.co.maybeitssoftware.londondockcompass.domain.rankDocks
-import java.util.Locale
 
 /**
  * The nearest usable dock, on the watch face.
@@ -136,7 +136,3 @@ class NearestDockComplicationService : SuspendingComplicationDataSourceService()
         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
     )
 }
-
-internal fun formatDistance(metres: Int): String =
-    if (metres < 1000) "${metres}m"
-    else String.format(Locale.getDefault(), "%.1fkm", metres / 1000f)

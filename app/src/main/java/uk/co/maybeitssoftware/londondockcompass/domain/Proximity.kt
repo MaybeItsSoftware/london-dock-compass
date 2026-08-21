@@ -12,9 +12,15 @@ enum class ProximityBand(val enterAtMetres: Int, val leaveAtMetres: Int) {
     ARRIVED(enterAtMetres = 25, leaveAtMetres = 45);
 
     companion object {
-        /** The tightest band the rider is inside, or null if none. */
+        /**
+         * The tightest band the rider is inside, or null if none.
+         *
+         * By entry threshold, not by declaration order — the previous `lastOrNull` happened to be
+         * right only because ARRIVED is declared second, and would have gone silently wrong the
+         * first time somebody added a band or reordered the enum.
+         */
         fun forDistance(metres: Int): ProximityBand? =
-            entries.lastOrNull { metres <= it.enterAtMetres }
+            entries.filter { metres <= it.enterAtMetres }.minByOrNull { it.enterAtMetres }
     }
 }
 

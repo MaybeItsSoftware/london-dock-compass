@@ -16,14 +16,17 @@ import androidx.wear.compose.material.MaterialTheme
  * the brand, and status keeps the same four-way convention as everywhere else.
  */
 object Palette {
-    val Raspberry = Color(0xFFD62246)
-    val Emerald = Color(0xFF4CC38E)
-    val Amber = Color(0xFFFFBF00)
-    val Azure = Color(0xFF007FFF)
-    val Chalk = Color(0xFFFAF8F4)
-    val Muted = Color(0xFFB6B3BF)
-    val Dim = Color(0xFF6E6B7C)
-    val Ink = Color.Black
+    val Raspberry = Color(Brand.RASPBERRY)
+    val Emerald = Color(Brand.EMERALD)
+    val Amber = Color(Brand.AMBER)
+    val Azure = Color(Brand.AZURE)
+    val Chalk = Color(Brand.CHALK)
+    val Muted = Color(Brand.MUTED)
+    val Dim = Color(Brand.DIM)
+    val Ink = Color(Brand.INK)
+    val Surface = Color(Brand.SURFACE)
+    val Scrim = Color(Brand.SCRIM)
+    val Well = Color(Brand.WELL)
 }
 
 /**
@@ -44,7 +47,7 @@ fun LondonDockCompassTheme(content: @Composable () -> Unit) {
             onBackground = Palette.Chalk,
             primary = Palette.Raspberry,
             onPrimary = Palette.Chalk,
-            surface = Color(0xFF1C1A23),
+            surface = Palette.Surface,
             onSurface = Palette.Chalk,
             error = Palette.Raspberry
         ),

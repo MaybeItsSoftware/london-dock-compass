@@ -57,11 +57,12 @@ import uk.co.maybeitssoftware.londondockcompass.data.DockSource
 import uk.co.maybeitssoftware.londondockcompass.domain.DestinationHealth
 import uk.co.maybeitssoftware.londondockcompass.domain.RankedDock
 import uk.co.maybeitssoftware.londondockcompass.domain.RideMode
-import uk.co.maybeitssoftware.londondockcompass.domain.TIGHT_THRESHOLD
+import uk.co.maybeitssoftware.londondockcompass.domain.formatDistance
 import uk.co.maybeitssoftware.londondockcompass.domain.isStaleAt
+import uk.co.maybeitssoftware.londondockcompass.domain.normaliseDegrees
+import uk.co.maybeitssoftware.londondockcompass.presentation.theme.Brand
 import uk.co.maybeitssoftware.londondockcompass.presentation.theme.MicroLabel
 import uk.co.maybeitssoftware.londondockcompass.presentation.theme.Palette
-import kotlin.math.roundToInt
 
 /** One swipeable card. The pinned destination, when there is one, always leads. */
 private sealed interface Page {
@@ -445,7 +446,7 @@ private fun ModeChip(mode: RideMode, onClick: () -> Unit, modifier: Modifier = M
         Box(
             modifier = Modifier
                 .border(1.dp, Palette.Dim, CircleShape)
-                .background(Color(0xFF15131A), CircleShape)
+                .background(Palette.Well, CircleShape)
                 .padding(horizontal = 12.dp, vertical = 4.dp)
         ) {
             Text(text = mode.label, style = MicroLabel, color = Palette.Chalk)
@@ -512,7 +513,7 @@ private fun DockActions(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xE60D0C11))
+            .background(Palette.Scrim)
             .clickable(onClick = onDismiss),
         contentAlignment = Alignment.Center
     ) {
@@ -601,16 +602,7 @@ fun PermissionScreen(
     }
 }
 
-private fun countColor(count: Int?): Color = when {
-    count == null -> Palette.Muted
-    count <= 0 -> Palette.Raspberry
-    count < TIGHT_THRESHOLD -> Palette.Amber
-    else -> Palette.Emerald
-}
-
-/** Metres up close, where precision matters; kilometres once it stops mattering. */
-internal fun formatDistance(metres: Int): String =
-    if (metres < 1000) "${metres}m" else "${(metres / 100f).roundToInt() / 10f}km"
+private fun countColor(count: Int?): Color = Color(Brand.availabilityColour(count))
 
 /**
  * Spoken description of a dock.
@@ -628,7 +620,7 @@ internal fun RankedDock.describe(mode: RideMode, relativeBearing: Float): String
 }
 
 internal fun Float.asSpokenDirection(): String {
-    val normalised = ((this % 360f) + 360f) % 360f
+    val normalised = normaliseDegrees(this)
     return when (((normalised + 22.5f) / 45f).toInt() % 8) {
         0 -> "straight ahead"
         1 -> "ahead and to your right"

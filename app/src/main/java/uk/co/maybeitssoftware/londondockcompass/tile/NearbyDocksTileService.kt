@@ -25,8 +25,8 @@ import uk.co.maybeitssoftware.londondockcompass.data.RiderPreferences
 import uk.co.maybeitssoftware.londondockcompass.data.riderPosition
 import uk.co.maybeitssoftware.londondockcompass.domain.RankedDock
 import uk.co.maybeitssoftware.londondockcompass.domain.RideMode
-import uk.co.maybeitssoftware.londondockcompass.domain.TIGHT_THRESHOLD
 import uk.co.maybeitssoftware.londondockcompass.domain.rankDocks
+import uk.co.maybeitssoftware.londondockcompass.presentation.theme.Brand
 
 /**
  * The three nearest docks, one swipe from the watch face.
@@ -89,7 +89,7 @@ class NearbyDocksTileService : TileService() {
             content.addContent(
                 Text.Builder(this, "No docks nearby")
                     .setTypography(Typography.TYPOGRAPHY_BODY2)
-                    .setColor(argb(CHALK))
+                    .setColor(argb(Brand.CHALK))
                     .build()
             )
         } else {
@@ -101,7 +101,7 @@ class NearbyDocksTileService : TileService() {
             .setPrimaryLabelTextContent(
                 Text.Builder(this, mode.label)
                     .setTypography(Typography.TYPOGRAPHY_CAPTION3)
-                    .setColor(argb(RASPBERRY))
+                    .setColor(argb(Brand.RASPBERRY))
                     .build()
             )
             .setContent(content.build())
@@ -116,7 +116,7 @@ class NearbyDocksTileService : TileService() {
             .addContent(
                 Text.Builder(this, dock.count?.toString() ?: "–")
                     .setTypography(Typography.TYPOGRAPHY_TITLE3)
-                    .setColor(argb(countColour(dock.count)))
+                    .setColor(argb(Brand.availabilityColour(dock.count)))
                     .build()
             )
             .addContent(
@@ -127,7 +127,7 @@ class NearbyDocksTileService : TileService() {
             .addContent(
                 Text.Builder(this, "${dock.distanceMetres}m  ${dock.name.shorten()}")
                     .setTypography(Typography.TYPOGRAPHY_CAPTION2)
-                    .setColor(argb(MUTED))
+                    .setColor(argb(Brand.MUTED))
                     .setMaxLines(1)
                     .build()
             )
@@ -165,20 +165,6 @@ class NearbyDocksTileService : TileService() {
         const val ROWS = 3
         const val MAIN_ACTIVITY =
             "uk.co.maybeitssoftware.londondockcompass.presentation.MainActivity"
-
-        // Tiles are drawn outside Compose, so the palette is repeated as raw ARGB here.
-        const val RASPBERRY = 0xFFD62246.toInt()
-        const val EMERALD = 0xFF4CC38E.toInt()
-        const val AMBER = 0xFFFFBF00.toInt()
-        const val CHALK = 0xFFFAF8F4.toInt()
-        const val MUTED = 0xFFB6B3BF.toInt()
-
-        fun countColour(count: Int?): Int = when {
-            count == null -> MUTED
-            count <= 0 -> RASPBERRY
-            count < TIGHT_THRESHOLD -> AMBER
-            else -> EMERALD
-        }
 
         /** Dock names are long and tiles are narrow; the street is the part that locates it. */
         fun String.shorten(): String = substringBefore(',').take(18)

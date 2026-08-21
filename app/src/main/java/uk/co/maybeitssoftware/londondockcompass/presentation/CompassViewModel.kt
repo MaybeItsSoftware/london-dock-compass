@@ -113,6 +113,15 @@ class CompassViewModel(app: Application) : AndroidViewModel(app) {
     private var snapshot: DockSnapshot = DockSnapshot.EMPTY
     private var destinationDock: Dock? = null
 
+    /**
+     * The two preferences that reorder the deck, held in memory and written through on change.
+     *
+     * recompute() runs on every GPS fix — up to once a second — and used to re-read both from
+     * SharedPreferences each time, rebuilding the favourites Set from strings on every pass.
+     */
+    private var favourites: Set<Int> = prefs.favourites
+    private var destination: Destination? = prefs.destination
+
     /** Saved docks fetched by id, for the ones too far away to be in the sweep. */
     private val savedDocks = mutableMapOf<Int, Dock>()
 
@@ -142,7 +151,7 @@ class CompassViewModel(app: Application) : AndroidViewModel(app) {
     private var savedDocksRefreshedAt = 0L
 
     init {
-        prefs.destination?.let { pinned ->
+        destination?.let { pinned ->
             _state.update { it.copy(destination = DestinationState(pinned, null, DestinationHealth.UNKNOWN)) }
         }
         viewModelScope.launch { refreshRequests.collect { runRefresh() } }
@@ -213,8 +222,9 @@ class CompassViewModel(app: Application) : AndroidViewModel(app) {
 
     fun toggleFavourite(dockId: Int) {
         prefs.toggleFavourite(dockId)
-        if (dockId !in prefs.favourites) savedDocks.remove(dockId)
-        _state.update { it.copy(favourites = prefs.favourites) }
+        favourites = prefs.favourites
+        if (dockId !in favourites) savedDocks.remove(dockId)
+        _state.update { it.copy(favourites = favourites) }
         recompute()
         // A deliberate save should show a count now, not at the next slow saved-dock sweep.
         savedDocksRefreshedAt = 0L
@@ -222,11 +232,12 @@ class CompassViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun pinDestination(dock: RankedDock) {
-        val destination = Destination(dock.id, dock.name, dock.dock.position)
-        prefs.destination = destination
+        val pinned = Destination(dock.id, dock.name, dock.dock.position)
+        prefs.destination = pinned
+        destination = pinned
         destinationDock = dock.dock
         _state.update {
-            it.copy(destination = DestinationState(destination, null, DestinationHealth.UNKNOWN))
+            it.copy(destination = DestinationState(pinned, null, DestinationHealth.UNKNOWN))
         }
         recompute()
         refresh()
@@ -234,6 +245,7 @@ class CompassViewModel(app: Application) : AndroidViewModel(app) {
 
     fun clearDestination() {
         prefs.destination = null
+        destination = null
         destinationDock = null
         _state.update { it.copy(destination = null) }
     }
@@ -262,7 +274,7 @@ class CompassViewModel(app: Application) : AndroidViewModel(app) {
      * request of its own — unless the sweep happened to cover it, in which case we already have it.
      */
     private suspend fun refreshDestinationDock() {
-        val pinned = prefs.destination ?: return
+        val pinned = destination ?: return
         val fromSnapshot = snapshot.docks.firstOrNull { it.id == pinned.dockId }
         destinationDock = fromSnapshot
             ?: runCatching { api.dock(pinned.dockId) }
@@ -278,7 +290,7 @@ class CompassViewModel(app: Application) : AndroidViewModel(app) {
      * you check your home dock before setting off rather than after arriving at it.
      */
     private suspend fun refreshSavedDocks() {
-        val wanted = prefs.favourites - snapshot.docks.map { it.id }.toSet()
+        val wanted = favourites - snapshot.docks.map { it.id }.toSet()
         savedDocks.keys.retainAll(wanted)
 
         val now = System.currentTimeMillis()
@@ -316,10 +328,10 @@ class CompassViewModel(app: Application) : AndroidViewModel(app) {
         )
 
         val ranked = rankDocks(here, snapshot.docks, mode)
-        val pinned = prefs.destination
-        val destinationState = pinned?.let { destination ->
+        val pinned = destination
+        val destinationState = pinned?.let {
             val rankedDestination = destinationDock?.let(::rank)
-            DestinationState(destination, rankedDestination, destinationHealth(rankedDestination))
+            DestinationState(it, rankedDestination, destinationHealth(rankedDestination))
         }
 
         // Saved docks already in the deck are left there; only the far-off ones need a page.
@@ -334,7 +346,7 @@ class CompassViewModel(app: Application) : AndroidViewModel(app) {
                 docks = ranked,
                 savedDocks = saved,
                 destination = destinationState,
-                favourites = prefs.favourites,
+                favourites = favourites,
                 source = snapshot.source,
                 fetchedAtMillis = snapshot.fetchedAtMillis,
                 hasPosition = true

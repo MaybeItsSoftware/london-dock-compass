@@ -3,6 +3,7 @@ package uk.co.maybeitssoftware.londondockcompass.presentation
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import uk.co.maybeitssoftware.londondockcompass.domain.Availability
+import uk.co.maybeitssoftware.londondockcompass.domain.formatDistance
 import uk.co.maybeitssoftware.londondockcompass.domain.Dock
 import uk.co.maybeitssoftware.londondockcompass.domain.GeoPoint
 import uk.co.maybeitssoftware.londondockcompass.domain.RankedDock
