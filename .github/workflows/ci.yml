@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   test:
-    name: Lint & Test
+    name: Lint, test & release build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,3 +24,9 @@ jobs:
         run: ./gradlew lint
       - name: Unit tests
         run: ./gradlew test
+      # The shipped build is the minified one. Without this, an R8 or resource-shrinking
+      # regression — the kind kotlinx.serialization's generated serializers invite — stays
+      # invisible until the Fastlane deploy step, which is a bad place to find out.
+      # The signing config no-ops when keystore.properties is absent, so this needs no secrets.
+      - name: Release build
+        run: ./gradlew assembleRelease

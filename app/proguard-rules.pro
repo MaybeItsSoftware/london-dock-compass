@@ -12,13 +12,11 @@
 #   public *;
 #}
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
-
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# Play Console deobfuscates release crashes with the mapping file that supply uploads alongside
+# the bundle — but without these two lines the deobfuscated frames carry no line numbers, which is
+# most of what a stack trace is for. The cost is a few kilobytes.
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile
 
 # Ktor pulls in slf4j, whose optional static binder is absent at runtime.
 -dontwarn org.slf4j.impl.StaticLoggerBinder

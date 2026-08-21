@@ -41,7 +41,6 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            ndk { debugSymbolLevel = "SYMBOL_TABLE" }
             if (keystorePropsFile.exists()) {
                 signingConfig = signingConfigs.getByName("release")
             }
@@ -54,6 +53,15 @@ android {
     }
     kotlinOptions { jvmTarget = "11" }
     buildFeatures { compose = true }
+
+    lint {
+        // Dependency-currency checks are time-varying: they start failing the day some unrelated
+        // library publishes a release, which is not a signal worth breaking a build over. Keeping
+        // them out is what makes the rest safe to enforce.
+        disable += setOf("GradleDependency", "AndroidGradlePluginVersion")
+        warningsAsErrors = true
+        abortOnError = true
+    }
 }
 
 dependencies {

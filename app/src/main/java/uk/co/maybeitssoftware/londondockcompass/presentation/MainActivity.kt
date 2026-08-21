@@ -117,14 +117,20 @@ private fun Context.locationAccess(): LocationAccess = when {
 private fun Context.granted(permission: String): Boolean =
     ActivityCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
 
-/** The way out of a permanent denial: the system settings page for this app. */
+/**
+ * The way out of a permanent denial: the system settings page for this app.
+ *
+ * No FLAG_ACTIVITY_NEW_TASK — on Wear that produces a second recents entry for the same app, which
+ * is exactly what the empty taskAffinity in the manifest is there to avoid. The caller is the
+ * Activity, so it does not need the flag anyway.
+ */
 private fun Context.openAppSettings() {
     runCatching {
         startActivity(
             Intent(
                 Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
                 Uri.fromParts("package", packageName, null)
-            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
         )
     }
 }
