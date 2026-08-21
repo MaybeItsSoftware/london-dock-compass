@@ -1,42 +1,43 @@
 ROOT   = File.expand_path("..", __dir__)
 APP_ID = "uk.co.maybeitssoftware.londondockcompass"
 
-platform :android do
-  # This is a Wear-only app (the manifest requires android.hardware.type.watch), so Play
-  # keeps it on form-factor tracks and rejects the artifact on the plain ones.
-  desc "Build a signed release AAB and upload it to the Play Wear internal testing track"
-  lane :beta do
-    sh("cd #{ROOT} && ./gradlew bundleRelease")
+# One applicationId, two bundles. Play routes by device: the :app bundle requires
+# android.hardware.type.watch and lives on the wear:* tracks, the :mobile bundle
+# has no such requirement and lives on the plain ones. They must carry different
+# versionCodes, and wear must be the higher of the two -- see
+# scripts/set-gradle-version.sh for why.
+WEAR_AAB   = File.join(ROOT, "app", "build", "outputs", "bundle", "release", "app-release.aab")
+MOBILE_AAB = File.join(ROOT, "mobile", "build", "outputs", "bundle", "release", "mobile-release.aab")
 
-    upload_to_play_store(
-      package_name:            APP_ID,
-      track:                   "wear:internal",
-      aab:                     File.join(ROOT, "app", "build", "outputs", "bundle", "release", "app-release.aab"),
-      json_key_data:           ENV["PLAY_SERVICE_ACCOUNT_JSON"],
-      skip_upload_apk:         true,
-      # The store listing is global, not per-track: these go live as soon as the
-      # edit commits, whatever track the bundle lands on. Uploading them here is
-      # what keeps the storefront in step with branding/ -- with all three
-      # skipped, regenerating assets never reached Play and the listing sat on
-      # whatever was last uploaded by hand.
-      #
-      # metadata (title/descriptions) stays skipped because there are no .txt
-      # files under fastlane/metadata/android/en-GB -- supply would have nothing
-      # to send. Run `fastlane android download_metadata` to seed them from the
-      # live listing first, then flip this to false.
-      skip_upload_metadata:    true,
-      skip_upload_images:      false,
-      skip_upload_screenshots: false,
-    )
+platform :android do
+  desc "Build both signed release AABs and upload them to their internal testing tracks"
+  lane :beta do
+    sh("cd #{ROOT} && ./gradlew :app:bundleRelease :mobile:bundleRelease")
+    upload_wear(track: "wear:internal", with_listing: true)
+    upload_mobile(track: "internal")
+  end
+
+  desc "Build and upload only the Wear bundle"
+  lane :beta_wear do
+    sh("cd #{ROOT} && ./gradlew :app:bundleRelease")
+    upload_wear(track: "wear:internal", with_listing: true)
+  end
+
+  desc "Build and upload only the phone bundle"
+  lane :beta_mobile do
+    sh("cd #{ROOT} && ./gradlew :mobile:bundleRelease")
+    upload_mobile(track: "internal")
   end
 
   # Track ids are case-sensitive and this app's closed-testing track is "Alpha"
   # with a capital A (Play Console: "Closed testing - Alpha"). Passing "alpha"
   # fails with "Google Api Error: Invalid request - Track not found: wear:alpha".
-  # The live ids are: wear:internal, wear:Alpha, wear:beta, wear:production.
-  desc "Promote the current Wear internal-track build to another Wear track"
-  desc "  fastlane android promote               # -> wear:production"
-  desc "  fastlane android promote track:Alpha   # -> wear:Alpha (closed testing)"
+  # The live ids are: wear:internal, wear:Alpha, wear:beta, wear:production, and
+  # the same names without the prefix for the phone.
+  desc "Promote the current internal-track builds to another track"
+  desc "  fastlane android promote                      # both -> production"
+  desc "  fastlane android promote track:Alpha          # both -> closed testing"
+  desc "  fastlane android promote track:Alpha form:wear   # watch only"
   lane :promote do |options|
     target = options[:track] || "production"
     # "completed" is what supply defaults to. A track that has never had a live
@@ -44,20 +45,19 @@ platform :android do
     # "Only releases with status draft may be created on draft app". Pass
     # status:draft for a first-ever release on a track, then finish the rollout
     # once by hand in Play Console (countries, policies, "Start rollout").
+    #
+    # If testers report "your device isn't compatible", check here first: a
+    # release left sitting in Draft is invisible to them however healthy the
+    # bundle is.
     status = options[:status] || "completed"
+    form   = options[:form] || "both"
 
-    upload_to_play_store(
-      package_name:            APP_ID,
-      track:                   "wear:internal",
-      track_promote_to:        "wear:#{target}",
-      track_promote_release_status: status,
-      json_key_data:           ENV["PLAY_SERVICE_ACCOUNT_JSON"],
-      skip_upload_apk:         true,
-      skip_upload_aab:         true,
-      skip_upload_metadata:    true,
-      skip_upload_images:      true,
-      skip_upload_screenshots: true,
-    )
+    if %w[both wear].include?(form)
+      promote_track(from: "wear:internal", to: "wear:#{target}", status: status)
+    end
+    if %w[both mobile].include?(form)
+      promote_track(from: "internal", to: target, status: status)
+    end
   end
 
   # Refresh the storefront on its own. The listing is global and not tied to a
@@ -92,5 +92,59 @@ platform :android do
   desc "Download metadata and screenshots from Google Play Store"
   lane :download_metadata do
     sh("bundle exec fastlane supply init --json_key_data '#{ENV["PLAY_SERVICE_ACCOUNT_JSON"]}' --metadata_path '#{File.join(__dir__, "metadata", "android")}'")
+  end
+
+  # --- helpers -------------------------------------------------------------
+
+  # The store listing is global, not per-track: images go live as soon as the
+  # edit commits, whatever track the bundle lands on. Uploading them from one
+  # lane only is what stops the two form factors racing to write the same
+  # listing in separate edits.
+  #
+  # metadata (title/descriptions) stays skipped because there are no .txt files
+  # under fastlane/metadata/android/en-GB -- supply would have nothing to send.
+  # Run `fastlane android download_metadata` to seed them from the live listing
+  # first, then flip this to false.
+  private_lane :upload_wear do |options|
+    UI.user_error!("missing #{WEAR_AAB} -- run ./gradlew :app:bundleRelease") unless File.exist?(WEAR_AAB)
+    upload_to_play_store(
+      package_name:            APP_ID,
+      track:                   options[:track],
+      aab:                     WEAR_AAB,
+      json_key_data:           ENV["PLAY_SERVICE_ACCOUNT_JSON"],
+      skip_upload_apk:         true,
+      skip_upload_metadata:    true,
+      skip_upload_images:      !options[:with_listing],
+      skip_upload_screenshots: !options[:with_listing],
+    )
+  end
+
+  private_lane :upload_mobile do |options|
+    UI.user_error!("missing #{MOBILE_AAB} -- run ./gradlew :mobile:bundleRelease") unless File.exist?(MOBILE_AAB)
+    upload_to_play_store(
+      package_name:            APP_ID,
+      track:                   options[:track],
+      aab:                     MOBILE_AAB,
+      json_key_data:           ENV["PLAY_SERVICE_ACCOUNT_JSON"],
+      skip_upload_apk:         true,
+      skip_upload_metadata:    true,
+      skip_upload_images:      true,
+      skip_upload_screenshots: true,
+    )
+  end
+
+  private_lane :promote_track do |options|
+    upload_to_play_store(
+      package_name:                 APP_ID,
+      track:                        options[:from],
+      track_promote_to:             options[:to],
+      track_promote_release_status: options[:status],
+      json_key_data:                ENV["PLAY_SERVICE_ACCOUNT_JSON"],
+      skip_upload_apk:              true,
+      skip_upload_aab:              true,
+      skip_upload_metadata:         true,
+      skip_upload_images:           true,
+      skip_upload_screenshots:      true,
+    )
   end
 end

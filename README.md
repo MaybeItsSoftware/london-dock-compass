@@ -1,9 +1,12 @@
 # London Dock Compass
 
-A native Kotlin + Jetpack Compose **Wear OS** app that points you to the Santander Cycles dock you
-actually need, with live availability, right on your wrist. On-watch location and a compass heading
-find the docks around you; the TfL BikePoint API supplies real-time bike, e-bike and space counts —
-surfaced in the app, on a tile, and as a watch face complication.
+Native Kotlin + Jetpack Compose apps that point you to the Santander Cycles dock you actually need,
+with live availability. On **Wear OS** that is a compass needle on your wrist, a tile and a watch
+face complication; on **Android** it is a list of what is around you before you leave the house.
+The TfL BikePoint API supplies real-time bike, e-bike and space counts to both.
+
+One Play listing serves both: same `applicationId`, two bundles, and Play hands each device the one
+that fits.
 
 ## What it does
 
@@ -40,31 +43,55 @@ CACHED, NO LIVE DATA or how many minutes old a figure is rather than presenting 
 live one. With no network it falls back to the bundled dock coordinates and shows availability as
 unknown instead of as zero.
 
+**The phone knows what the watch knows.** Save a dock or pin a destination on either device and it
+turns up on the other over the Wear Data Layer — so you can pin where you are riding *to* on the
+phone, at home, before you have touched a bike. Ride mode deliberately stays local: it answers
+"what am I doing in the next ten minutes", which belongs to the device in your hand.
+
 ## Getting started
 
 **Requirements:** Android Studio (current stable), JDK 17.
 
-1. Open the repo root in Android Studio — it's a standard Gradle project (no nested `android/` directory), so it should sync immediately.
-2. Run on a Wear OS emulator (create one via Device Manager, e.g. a "Wear OS Large Round" image) or a physical Wear OS watch with Developer Options/ADB debugging enabled.
+1. Open the repo root in Android Studio — it's a standard Gradle project (no nested `android/`
+   directory), so it should sync immediately.
+2. Run the watch app on a Wear OS emulator (Device Manager, e.g. a "Wear OS Large Round" API 36
+   image) or a physical watch with Developer Options/ADB debugging on; run the phone app on any
+   API 26+ device or emulator.
 3. Or from the command line:
    ```
-   ./gradlew installDebug
+   ./gradlew :app:installDebug       # the watch
+   ./gradlew :mobile:installDebug    # the phone
    ```
 
-Build config (from `app/build.gradle.kts`): `compileSdk = 35`, `minSdk = 30`, `targetSdk = 35`. `applicationId` / `namespace` is `uk.co.maybeitssoftware.londondockcompass`.
+Installing directly skips the Play Store entirely, which is the fastest way to check a change —
+closed testing is for validating *distribution*, not for the edit-run loop.
+
+Build config: `compileSdk = 36` and `targetSdk = 36` throughout; `minSdk = 30` for the watch
+(Wear OS 3) and `26` for the phone. Both share the `applicationId`
+`uk.co.maybeitssoftware.londondockcompass`.
 
 ## Project structure
 
+Three Gradle modules. `:app` is the Wear app — it keeps the bare name because the release pipeline
+addresses it by path.
+
 ```
-app/src/main/java/uk/co/maybeitssoftware/londondockcompass/
-├── domain/              Pure Kotlin: geometry, ranking, ride modes, proximity bands, destination
-│                        health. No Android imports, so it is all unit-testable on the JVM.
-├── data/                TflBikePointApi (radius query), DockRepository (live → cache → bundled),
-│                        SnapshotStore, RiderPreferences, RiderLocation
-├── presentation/        MainActivity, CompassViewModel, CompassScreen, CompassSensor, Haptics, theme
-├── complication/        NearestDockComplicationService
-└── tile/                NearbyDocksTileService
+core/    domain/    Pure Kotlin: geometry, ranking, ride modes, proximity bands, destination
+                    health. No Android imports, so it is all unit-testable on the JVM.
+         data/      TflBikePointApi (radius query), DockRepository (live → cache → bundled),
+                    CachePolicy, SnapshotStore, RiderPreferences, RiderLocation, RiderSync
+         theme/     Brand: every colour literal in the project, and the count-to-colour rule
+
+app/     presentation/  MainActivity, CompassViewModel, CompassScreen, CompassSensor, Haptics
+         complication/  NearestDockComplicationService
+         tile/          NearbyDocksTileService
+
+mobile/  mobile/    MainActivity, DockListViewModel, DockListScreen, Material 3 theme
 ```
+
+`:core` carries no UI toolkit at all — the watch draws with Wear Compose and protolayout, the phone
+with Material 3, and neither opinion belongs underneath both. Every ranking decision, freshness rule
+and fallback is shared verbatim; the two apps differ only in how they render the answer.
 
 ### Where dock data comes from
 
@@ -75,20 +102,29 @@ without shipping an app update.
 
 Three tiers, in order: the live radius query; a short-lived snapshot cache shared by the app, the
 tile and the complication (in memory, and on disk so cold-started surfaces render immediately); and
-finally the bundled `app/src/main/res/raw/docklocations.json`, which is refreshed weekly from TfL by
+finally the bundled `core/src/main/res/raw/docklocations.json`, which is refreshed weekly from TfL by
 a scheduled workflow (see below) and exists purely so the arrow still points somewhere sensible in a
 tunnel or against a rate limit.
 
 The BikePoint endpoints work unauthenticated but are rate limited per IP. Register at
 [api-portal.tfl.gov.uk](https://api-portal.tfl.gov.uk/) and put the key in `tfl_app_key`
-(`app/src/main/res/values/strings.xml`) for the higher quota.
+(`core/src/main/res/values/strings.xml`) for the higher quota.
 
 ### Tests
 
-`./gradlew test` runs JVM unit tests over the `domain` package and the presentation-layer
-formatters: haversine distance (cross-checked against a figure TfL returns for the same pair),
+`./gradlew test` runs 65 JVM unit tests across `:core` and `:app`.
+
+Over `domain`: haversine distance (cross-checked against a figure TfL returns for the same pair),
 bearings, the angle wraparound that a naive lerp gets wrong at 359°, mode-dependent ranking,
 proximity hysteresis, destination-alert escalation, and the spoken accessibility descriptions.
+
+Over `data` — the layer with an external contract it does not control, and so the one that fails
+silently: `CachePolicy`'s live/cached/bundled thresholds, a BikePoint response parsed through the
+real serializer configuration (prefixed ids, counts nested in `additionalProperties`, missing counts
+decoding as *unknown* rather than as zero), and the stored-snapshot round trip.
+
+`./gradlew lint` is enforced rather than counted — `warningsAsErrors`, minus the dependency-currency
+checks, which start failing the day an unrelated library publishes a release.
 
 ## Branding
 

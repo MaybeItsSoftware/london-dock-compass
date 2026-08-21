@@ -1,4 +1,4 @@
-name: Promote to Production
+name: Promote a release
 
 on:
   workflow_dispatch:
@@ -6,10 +6,39 @@ on:
       version:
         description: 'Version to promote (e.g. v1.0.0)'
         required: true
+      track:
+        description: 'Target track. Case-sensitive — closed testing is "Alpha", not "alpha".'
+        required: false
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - Alpha
+          - beta
+      form:
+        description: 'Which bundle(s) to promote'
+        required: false
+        default: 'both'
+        type: choice
+        options:
+          - both
+          - wear
+          - mobile
+      status:
+        description: >-
+          Release status. A track that has never had a live rollout only accepts "draft",
+          which must then be finished by hand in Play Console — a release left in Draft is
+          invisible to testers however healthy the bundle is.
+        required: false
+        default: 'completed'
+        type: choice
+        options:
+          - completed
+          - draft
 
 jobs:
   promote-android:
-    name: Android → Play production
+    name: Android → Play ${{ inputs.track }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -21,7 +50,11 @@ jobs:
         with:
           ruby-version: '3.3'
           bundler-cache: true
-      - name: Promote internal → production
-        run: bundle exec fastlane android promote
+      - name: Promote internal → ${{ inputs.track }}
+        run: >-
+          bundle exec fastlane android promote
+          track:${{ inputs.track }}
+          form:${{ inputs.form }}
+          status:${{ inputs.status }}
         env:
           PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_STORE_SERVICE_ACCOUNT_JSON }}
