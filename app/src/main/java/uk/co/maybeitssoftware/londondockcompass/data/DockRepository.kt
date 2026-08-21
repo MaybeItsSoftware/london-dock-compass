@@ -9,7 +9,6 @@ import kotlinx.coroutines.withContext
 import uk.co.maybeitssoftware.londondockcompass.R
 import uk.co.maybeitssoftware.londondockcompass.domain.Dock
 import uk.co.maybeitssoftware.londondockcompass.domain.GeoPoint
-import uk.co.maybeitssoftware.londondockcompass.domain.distanceTo
 
 /** Where a set of docks came from, so the UI can be honest about how much to trust it. */
 enum class DockSource { LIVE, CACHED, BUNDLED }
@@ -71,20 +70,22 @@ class DockRepository(context: Context) {
     }
 
     private fun cached(point: GeoPoint, now: Long): DockSnapshot? {
-        val held = memory ?: cacheStore.read()?.let { CachedAt(it.first, it.second) } ?: return null
-        val age = now - held.snapshot.fetchedAtMillis
-        val moved = point.distanceTo(held.origin)
-        return held.snapshot.takeIf { age < FRESH_MILLIS && moved < REFETCH_DISTANCE_METRES }
+        val held = held() ?: return null
+        return held.snapshot.takeIf {
+            CachePolicy.isFresh(held.origin, it.fetchedAtMillis, point, now)
+        }
     }
 
     private fun staleFallback(point: GeoPoint, now: Long): DockSnapshot? {
-        val held = memory ?: cacheStore.read()?.let { CachedAt(it.first, it.second) } ?: return null
-        val age = now - held.snapshot.fetchedAtMillis
-        val moved = point.distanceTo(held.origin)
-        // Stale counts are still worth showing; counts from a mile away are not.
-        if (age > USABLE_MILLIS || moved > STALE_DISTANCE_METRES) return null
+        val held = held() ?: return null
+        if (!CachePolicy.isUsableFallback(held.origin, held.snapshot.fetchedAtMillis, point, now)) {
+            return null
+        }
         return held.snapshot.copy(source = DockSource.CACHED)
     }
+
+    private fun held(): CachedAt? =
+        memory ?: cacheStore.read()?.let { CachedAt(it.first, it.second) }
 
     private data class CachedAt(val origin: GeoPoint, val snapshot: DockSnapshot)
 
@@ -93,11 +94,6 @@ class DockRepository(context: Context) {
 
         /** Comfortably past the far side of a London block, without pulling in half the city. */
         const val DEFAULT_RADIUS_METRES = 800
-
-        private const val FRESH_MILLIS = 30_000L
-        private const val USABLE_MILLIS = 10 * 60_000L
-        private const val REFETCH_DISTANCE_METRES = 150.0
-        private const val STALE_DISTANCE_METRES = 600.0
 
         private val lock = Mutex()
 

@@ -56,7 +56,7 @@ class TflBikePointApi(private val appKey: String? = null) {
         val client by lazy {
             HttpClient(Android) {
                 install(ContentNegotiation) {
-                    json(Json { ignoreUnknownKeys = true; coerceInputValues = true })
+                    json(tflJson)
                 }
                 install(HttpTimeout) {
                     requestTimeoutMillis = 8_000
@@ -67,11 +67,14 @@ class TflBikePointApi(private val appKey: String? = null) {
     }
 }
 
-@Serializable
-private data class PlacesResponse(val places: List<PlaceDto> = emptyList())
+/** The exact parser the client uses, so tests exercise the real configuration. */
+internal val tflJson = Json { ignoreUnknownKeys = true; coerceInputValues = true }
 
 @Serializable
-private data class PlaceDto(
+internal data class PlacesResponse(val places: List<PlaceDto> = emptyList())
+
+@Serializable
+internal data class PlaceDto(
     val id: String,
     val commonName: String = "",
     val lat: Double = 0.0,
@@ -80,13 +83,13 @@ private data class PlaceDto(
 )
 
 @Serializable
-private data class PropertyDto(
+internal data class PropertyDto(
     val key: String,
     val value: String = "",
     val modified: String? = null
 )
 
-private fun PlaceDto.toDock(): Dock? {
+internal fun PlaceDto.toDock(): Dock? {
     // Ids arrive as "BikePoints_341"; everything else in the app keys on the bare integer.
     val numericId = id.substringAfterLast('_').toIntOrNull() ?: return null
     val props = additionalProperties.associateBy { it.key }
@@ -122,9 +125,9 @@ private fun PlaceDto.toDock(): Dock? {
 }
 
 /** The properties whose `modified` stamp actually tracks the availability figures. */
-private val COUNT_KEYS = listOf("NbBikes", "NbEmptyDocks", "NbEBikes", "NbStandardBikes")
+internal val COUNT_KEYS = listOf("NbBikes", "NbEmptyDocks", "NbEBikes", "NbStandardBikes")
 
-private fun String.toEpochMillis(): Long? = try {
+internal fun String.toEpochMillis(): Long? = try {
     // Some TfL fields stamp UTC without the trailing Z that Instant insists on.
     Instant.parse(if (endsWith("Z")) this else this + "Z").toEpochMilli()
 } catch (e: Exception) {

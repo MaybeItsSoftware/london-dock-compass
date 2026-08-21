@@ -30,7 +30,7 @@ class SnapshotStore(context: Context) {
                 fetchedAtMillis = snapshot.fetchedAtMillis,
                 docks = snapshot.docks.map { it.toStored() }
             )
-            prefs.edit { putString(KEY_SNAPSHOT, json.encodeToString(payload)) }
+            prefs.edit { putString(KEY_SNAPSHOT, snapshotJson.encodeToString(payload)) }
         } catch (e: Exception) {
             Log.w(TAG, "Could not persist dock snapshot", e)
         }
@@ -39,7 +39,7 @@ class SnapshotStore(context: Context) {
     fun read(): Pair<GeoPoint, DockSnapshot>? {
         val raw = prefs.getString(KEY_SNAPSHOT, null) ?: return null
         return try {
-            val stored = json.decodeFromString<StoredSnapshot>(raw)
+            val stored = snapshotJson.decodeFromString<StoredSnapshot>(raw)
             GeoPoint(stored.lat, stored.lon) to DockSnapshot(
                 docks = stored.docks.map { it.toDock() },
                 source = DockSource.CACHED,
@@ -55,12 +55,14 @@ class SnapshotStore(context: Context) {
     private companion object {
         const val TAG = "SnapshotStore"
         const val KEY_SNAPSHOT = "last_snapshot"
-        val json = Json { ignoreUnknownKeys = true }
     }
 }
 
+/** File-level so tests round-trip through the same parser the store uses. */
+internal val snapshotJson = Json { ignoreUnknownKeys = true }
+
 @Serializable
-private data class StoredSnapshot(
+internal data class StoredSnapshot(
     val lat: Double,
     val lon: Double,
     val fetchedAtMillis: Long,
@@ -68,7 +70,7 @@ private data class StoredSnapshot(
 )
 
 @Serializable
-private data class StoredDock(
+internal data class StoredDock(
     val id: Int,
     val name: String,
     val lat: Double,
@@ -97,7 +99,7 @@ private data class StoredDock(
     )
 }
 
-private fun Dock.toStored() = StoredDock(
+internal fun Dock.toStored() = StoredDock(
     id = id,
     name = name,
     lat = position.lat,
