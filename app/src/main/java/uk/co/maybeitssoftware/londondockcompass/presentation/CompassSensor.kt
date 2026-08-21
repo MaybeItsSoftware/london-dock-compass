@@ -6,6 +6,7 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import androidx.compose.runtime.FloatState
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -37,8 +38,13 @@ class CompassSensor(context: Context) : SensorEventListener {
     private val _heading = mutableFloatStateOf(0f)
     private val _accuracy = mutableStateOf(CompassAccuracy.FAIR)
 
-    /** Degrees clockwise from true north that the top of the watch is pointing. */
-    val heading: State<Float> = _heading
+    /**
+     * Degrees clockwise from true north that the top of the watch is pointing.
+     *
+     * Deliberately a [FloatState] rather than a `State<Float>`: this is written fifty times a
+     * second and boxing every sample is a cost with nothing to show for it.
+     */
+    val heading: FloatState = _heading
     val accuracy: State<CompassAccuracy> = _accuracy
 
     /** Degrees to add to a magnetic reading to get a true one. About one degree in London. */

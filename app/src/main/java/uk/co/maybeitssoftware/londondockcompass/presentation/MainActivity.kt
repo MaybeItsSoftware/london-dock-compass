@@ -8,6 +8,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import android.os.Looper
+import android.os.SystemClock
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -16,6 +17,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -28,6 +30,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.wear.ambient.AmbientLifecycleObserver
 import androidx.wear.compose.material.Scaffold
@@ -37,6 +40,8 @@ import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.delay
 import uk.co.maybeitssoftware.londondockcompass.domain.GeoPoint
 import uk.co.maybeitssoftware.londondockcompass.domain.ProximityTracker
 import uk.co.maybeitssoftware.londondockcompass.domain.RankedDock
@@ -49,12 +54,16 @@ class MainActivity : ComponentActivity() {
     private val isAmbient = mutableStateOf(false)
 
     private val ambientCallback = object : AmbientLifecycleObserver.AmbientLifecycleCallback {
+        // Ambient does not pause the Activity, so without this the magnetometer keeps streaming
+        // fifty samples a second at a screen that redraws once a minute and has no arrow to turn.
         override fun onEnterAmbient(ambientDetails: AmbientLifecycleObserver.AmbientDetails) {
             isAmbient.value = true
+            compass.stop()
         }
 
         override fun onExitAmbient() {
             isAmbient.value = false
+            compass.start()
         }
 
         override fun onUpdateAmbient() = Unit
@@ -81,7 +90,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        compass.start()
+        if (!isAmbient.value) compass.start()
     }
 
     override fun onPause() {
@@ -175,9 +184,41 @@ fun LondonDockCompassApp(compass: CompassSensor, isAmbient: Boolean) {
     val haptics = remember { Haptics(context) }
     val view = LocalView.current
 
-    // You are on a bike. The screen has to stay lit for the whole ride.
-    DisposableEffect(Unit) {
-        view.keepScreenOn = true
+    // Memoised deliberately: a fresh lambda on every pass would give CompassScreen a changed
+    // parameter each time and undo the skipping this indirection exists to buy.
+    val heading: () -> Float = remember(compass) { { compass.heading.floatValue } }
+
+    // Polling follows attention. The loop used to live in the ViewModel's init and ran for as
+    // long as the Activity was not finishing — twenty-second requests to TfL while the watch sat
+    // in ambient on someone's wrist with nobody looking.
+    LaunchedEffect(lifecycleOwner, isAmbient) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            viewModel.onAttentionChanged(
+                if (isAmbient) Attention.AMBIENT else Attention.WATCHING
+            )
+            try {
+                awaitCancellation()
+            } finally {
+                viewModel.onAttentionChanged(Attention.AWAY)
+            }
+        }
+    }
+
+    // You are on a bike. The screen has to stay lit for the whole ride — but "the whole ride" is
+    // not the same as "for as long as the app happens to be open". A pinned destination or recent
+    // movement counts as riding; five minutes of neither does not, and a red light is nowhere near
+    // five minutes.
+    var lastMovedAt by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
+    var clock by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(IDLE_CHECK_MILLIS)
+            clock = SystemClock.elapsedRealtime()
+        }
+    }
+    val keepAwake = state.destination != null || clock - lastMovedAt < IDLE_TIMEOUT_MILLIS
+    DisposableEffect(keepAwake) {
+        view.keepScreenOn = keepAwake
         onDispose { view.keepScreenOn = false }
     }
 
@@ -185,6 +226,9 @@ fun LondonDockCompassApp(compass: CompassSensor, isAmbient: Boolean) {
         val point = GeoPoint(location.latitude, location.longitude)
         viewModel.onPosition(point)
         compass.onPosition(point)
+        if (location.hasSpeed() && location.speed > MOVING_SPEED_MPS) {
+            lastMovedAt = SystemClock.elapsedRealtime()
+        }
     }
 
     // The dock currently under the rider's eyes, which is the one worth buzzing about.
@@ -209,7 +253,7 @@ fun LondonDockCompassApp(compass: CompassSensor, isAmbient: Boolean) {
 
     CompassScreen(
         state = state,
-        heading = compass.heading.value,
+        heading = heading,
         accuracy = compass.accuracy.value,
         isAmbient = isAmbient,
         onCycleMode = { haptics.confirm(); viewModel.cycleMode() },
@@ -258,3 +302,10 @@ private fun LocationUpdates(onLocation: (android.location.Location) -> Unit) {
         onDispose { client.removeLocationUpdates(callback) }
     }
 }
+
+/** Riding, or at least walking — a GPS fix jittering at a standstill does not reach this. */
+private const val MOVING_SPEED_MPS = 1.5f
+
+/** How long after the last movement the screen stops being held awake. */
+private const val IDLE_TIMEOUT_MILLIS = 5 * 60_000L
+private const val IDLE_CHECK_MILLIS = 30_000L

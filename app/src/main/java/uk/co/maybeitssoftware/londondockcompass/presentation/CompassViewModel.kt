@@ -4,12 +4,19 @@ import android.app.Application
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -61,6 +68,24 @@ data class CompassUiState(
     val hasLiveData: Boolean get() = source != DockSource.BUNDLED
 }
 
+/**
+ * How much of the rider's attention the app currently has.
+ *
+ * Polling used to be unconditional: a `while (isActive)` loop started in the ViewModel's `init`
+ * and kept hitting TfL every twenty seconds for as long as the Activity was alive, ambient or
+ * not. On a watch that is a battery bill for figures nobody is reading.
+ */
+enum class Attention {
+    /** Not resumed. Nothing to refresh for. */
+    AWAY,
+
+    /** Screen dimmed. Worth a slow poll only while a destination is being watched. */
+    AMBIENT,
+
+    /** Eyes on the deck. */
+    WATCHING
+}
+
 data class DestinationState(
     val destination: Destination,
     val ranked: RankedDock?,
@@ -108,17 +133,48 @@ class CompassViewModel(app: Application) : AndroidViewModel(app) {
     /** False while [position] is only the seed from the last session. */
     private var hasRealFix = false
 
+    private val attention = MutableStateFlow(Attention.AWAY)
+
+    /** The last position actually written to disk, so we do not write one per GPS callback. */
+    private var persistedPosition: GeoPoint? = null
+
+    /** Saved docks move slowly and cost a request each; they do not need every cycle. */
+    private var savedDocksRefreshedAt = 0L
+
     init {
         prefs.destination?.let { pinned ->
             _state.update { it.copy(destination = DestinationState(pinned, null, DestinationHealth.UNKNOWN)) }
         }
         viewModelScope.launch { refreshRequests.collect { runRefresh() } }
         viewModelScope.launch {
-            while (isActive) {
-                refresh()
-                delay(REFRESH_INTERVAL_MILLIS)
+            val hasDestination = _state
+                .map { it.destination != null }
+                .distinctUntilChanged()
+            combine(attention, hasDestination, ::Pair).collectLatest { (attention, pinned) ->
+                val interval = pollInterval(attention, pinned) ?: return@collectLatest
+                while (isActive) {
+                    refresh()
+                    delay(interval)
+                }
             }
         }
+    }
+
+    fun onAttentionChanged(value: Attention) {
+        attention.value = value
+    }
+
+    /**
+     * How often to poll, or null to stop.
+     *
+     * Ambient earns a poll only while a destination is pinned: that is the case where the app is
+     * watching a dock fill up on the rider's behalf and the answer matters even though nobody is
+     * looking. With nothing pinned, a dimmed screen has nothing to say that a request would change.
+     */
+    private fun pollInterval(attention: Attention, hasDestination: Boolean): Long? = when (attention) {
+        Attention.AWAY -> null
+        Attention.WATCHING -> REFRESH_INTERVAL_MILLIS
+        Attention.AMBIENT -> AMBIENT_REFRESH_INTERVAL_MILLIS.takeIf { hasDestination }
     }
 
     /** A new fix. Cheap to call at GPS rate — only the ranking runs, not a network request. */
@@ -128,10 +184,24 @@ class CompassViewModel(app: Application) : AndroidViewModel(app) {
         val previous = position.takeIf { hasRealFix }
         hasRealFix = true
         position = point
-        prefs.lastKnownPosition = point
+        rememberPosition(point)
         recompute()
         // Riding out of the swept radius is the other thing that justifies an off-schedule fetch.
         if (previous == null || previous.distanceTo(point) > REFETCH_AFTER_METRES) refresh()
+    }
+
+    /**
+     * Persists the fix, but not every fix.
+     *
+     * This value exists only as a cold-start seed for the tile and the complication. Writing it on
+     * every GPS callback queued a disk write a second for a figure nothing reads until the next
+     * time the watch wakes a background surface.
+     */
+    private fun rememberPosition(point: GeoPoint) {
+        val last = persistedPosition
+        if (last != null && last.distanceTo(point) < PERSIST_AFTER_METRES) return
+        persistedPosition = point
+        prefs.lastKnownPosition = point
     }
 
     fun cycleMode() {
@@ -146,6 +216,8 @@ class CompassViewModel(app: Application) : AndroidViewModel(app) {
         if (dockId !in prefs.favourites) savedDocks.remove(dockId)
         _state.update { it.copy(favourites = prefs.favourites) }
         recompute()
+        // A deliberate save should show a count now, not at the next slow saved-dock sweep.
+        savedDocksRefreshedAt = 0L
         refresh()
     }
 
@@ -208,12 +280,24 @@ class CompassViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun refreshSavedDocks() {
         val wanted = prefs.favourites - snapshot.docks.map { it.id }.toSet()
         savedDocks.keys.retainAll(wanted)
-        wanted.forEach { id ->
-            runCatching { api.dock(id) }
-                .onFailure { Log.w(TAG, "Saved dock $id refresh failed", it) }
-                .getOrNull()
-                ?.let { savedDocks[id] = it }
+
+        val now = System.currentTimeMillis()
+        if (now - savedDocksRefreshedAt < SAVED_REFRESH_INTERVAL_MILLIS) return
+        savedDocksRefreshedAt = now
+
+        // Concurrently, and capped. These used to go out one at a time on every twenty-second
+        // cycle, so three saved docks plus a destination plus the sweep was five sequential
+        // requests a cycle against an API that rate limits per IP.
+        val fetched = coroutineScope {
+            wanted.take(MAX_SAVED_FETCHES).map { id ->
+                async {
+                    id to runCatching { api.dock(id) }
+                        .onFailure { Log.w(TAG, "Saved dock $id refresh failed", it) }
+                        .getOrNull()
+                }
+            }.awaitAll()
         }
+        fetched.forEach { (id, dock) -> if (dock != null) savedDocks[id] = dock }
     }
 
     private fun recompute() {
@@ -263,6 +347,19 @@ class CompassViewModel(app: Application) : AndroidViewModel(app) {
 
         /** Fast enough that a count is never more than a block old, slow enough to be polite. */
         const val REFRESH_INTERVAL_MILLIS = 20_000L
+
+        /** Dimmed screen, destination pinned: still watching, just not urgently. */
+        const val AMBIENT_REFRESH_INTERVAL_MILLIS = 120_000L
+
         const val REFETCH_AFTER_METRES = 250.0
+
+        /** Far enough that the seed position would actually name different docks. */
+        const val PERSIST_AFTER_METRES = 50.0
+
+        /** Saved docks are, by definition, not where you are. */
+        const val SAVED_REFRESH_INTERVAL_MILLIS = 120_000L
+
+        /** A commuter has two or three. Twenty must not become twenty requests. */
+        const val MAX_SAVED_FETCHES = 6
     }
 }

@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -31,11 +32,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.rotary.onRotaryScrollEvent
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -87,7 +88,15 @@ private const val PINNED_KEY = -1
 @Composable
 fun CompassScreen(
     state: CompassUiState,
-    heading: Float,
+    /**
+     * Read lazily, never as a value.
+     *
+     * The magnetometer lands fifty samples a second. Taking `heading` as a `Float` parameter meant
+     * every one of them invalidated this whole subtree — pager, cards, text, semantics — because
+     * the read happened during composition at the call site. As a lambda the read moves to the
+     * draw phase, where a rotation costs a layer invalidation and nothing else.
+     */
+    heading: () -> Float,
     accuracy: CompassAccuracy,
     isAmbient: Boolean,
     onCycleMode: () -> Unit,
@@ -270,7 +279,7 @@ private fun PagerState.asIndicatorState(): PageIndicatorState {
 private fun DockPage(
     dock: RankedDock,
     mode: RideMode,
-    heading: Float,
+    heading: () -> Float,
     isFavourite: Boolean,
     isAmbient: Boolean,
     onOpenActions: () -> Unit
@@ -296,7 +305,7 @@ private fun DockPage(
 private fun PinnedPage(
     state: DestinationState,
     mode: RideMode,
-    heading: Float,
+    heading: () -> Float,
     isAmbient: Boolean,
     onOpenActions: () -> Unit
 ) {
@@ -328,24 +337,30 @@ private fun PinnedPage(
 private fun DockCard(
     dock: RankedDock,
     mode: RideMode,
-    heading: Float,
+    heading: () -> Float,
     isAmbient: Boolean,
     eyebrow: String?,
     eyebrowColor: Color,
     onOpenActions: () -> Unit
 ) {
-    val relativeBearing = dock.bearingDegrees - heading
     val countColor = countColor(dock.count)
+
+    // The spoken direction has eight buckets, so it changes eight times per turn of the wrist —
+    // not fifty times a second. derivedStateOf is what keeps the accessibility node (and this
+    // composable) from churning on every sample for a string that has not changed.
+    val spoken by remember(dock, mode) {
+        derivedStateOf { dock.describe(mode, dock.bearingDegrees - heading()) }
+    }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .clickable(enabled = !isAmbient, onClick = onOpenActions)
-            .semantics { contentDescription = dock.describe(mode, relativeBearing) },
+            .semantics { contentDescription = spoken },
         contentAlignment = Alignment.Center
     ) {
         CompassArrow(
-            rotation = relativeBearing,
+            rotation = { dock.bearingDegrees - heading() },
             tint = when {
                 isAmbient -> Palette.Chalk
                 dock.isUsable -> null
@@ -402,13 +417,16 @@ private fun DockCard(
  * drawable pointed left and every rotation carried a ninety degree correction along with it.
  */
 @Composable
-private fun CompassArrow(rotation: Float, tint: Color?, dimmed: Boolean) {
+private fun CompassArrow(rotation: () -> Float, tint: Color?, dimmed: Boolean) {
     Image(
         painter = painterResource(R.drawable.arrow),
         contentDescription = null,
         modifier = Modifier
             .fillMaxSize(0.92f)
-            .rotate(rotation)
+            // graphicsLayer with a lambda reads the heading in the draw phase, so a new sample
+            // invalidates the layer alone. Modifier.rotate() reads during composition and drags
+            // recomposition and layout along with it.
+            .graphicsLayer { rotationZ = rotation() }
             .alpha(if (dimmed) 0.35f else 1f)
             .clearAndSetSemantics { },
         colorFilter = tint?.let { ColorFilter.tint(it) }
