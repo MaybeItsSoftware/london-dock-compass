@@ -110,11 +110,19 @@ private fun PlaceDto.toDock(): Dock? {
             standardBikes = int("NbStandardBikes") ?: bikes,
             emptyDocks = emptyDocks,
             totalDocks = int("NbDocks") ?: (bikes + emptyDocks),
-            observedAtMillis = props.values.firstNotNullOfOrNull { it.modified?.toEpochMillis() }
+            // Only the count properties say anything about when the counts were observed. The
+            // first property TfL happens to list is usually TerminalName or InstallDate, whose
+            // modified stamp can be years old — reading that made live figures look ancient.
+            observedAtMillis = COUNT_KEYS
+                .mapNotNull { props[it]?.modified?.toEpochMillis() }
+                .maxOrNull()
                 ?: System.currentTimeMillis()
         )
     )
 }
+
+/** The properties whose `modified` stamp actually tracks the availability figures. */
+private val COUNT_KEYS = listOf("NbBikes", "NbEmptyDocks", "NbEBikes", "NbStandardBikes")
 
 private fun String.toEpochMillis(): Long? = try {
     // Some TfL fields stamp UTC without the trailing Z that Instant insists on.

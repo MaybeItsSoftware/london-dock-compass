@@ -17,7 +17,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -42,8 +44,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.wear.compose.material.Button
-import androidx.wear.compose.material.ButtonDefaults
 import androidx.wear.compose.material.Chip
 import androidx.wear.compose.material.ChipDefaults
 import androidx.wear.compose.material.HorizontalPageIndicator
@@ -526,8 +526,21 @@ private fun DockActions(
     }
 }
 
+/**
+ * The way in, and — when the platform has stopped listening — the way out.
+ *
+ * Two states get here. A flat denial is recoverable by asking again. An *approximate* grant is the
+ * trap: the rider tapped a button that said yes, the app cannot use what it got, and after a second
+ * refusal the system silently ignores further requests. Both states therefore carry a route into
+ * app settings, because a screen whose only button does nothing is worse than no screen at all.
+ */
 @Composable
-fun PermissionScreen(onRequest: () -> Unit) {
+fun PermissionScreen(
+    access: LocationAccess,
+    onRequest: () -> Unit,
+    onOpenSettings: () -> Unit
+) {
+    val approximate = access == LocationAccess.APPROXIMATE
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -536,21 +549,36 @@ fun PermissionScreen(onRequest: () -> Unit) {
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier.padding(24.dp)
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp, vertical = 24.dp)
         ) {
+            if (approximate) {
+                Text(text = "APPROXIMATE ONLY", style = MicroLabel, color = Palette.Amber)
+            }
             Text(
-                text = "Location needed to find nearby docks",
+                text = if (approximate) {
+                    "An arrow needs precise location. Approximate puts you somewhere in the borough."
+                } else {
+                    "Location needed to find nearby docks"
+                },
                 textAlign = TextAlign.Center,
                 style = MaterialTheme.typography.body2,
                 color = Palette.Chalk
             )
-            Button(
+            Chip(
+                label = { Text(if (approximate) "Use precise" else "Allow") },
                 onClick = onRequest,
-                colors = ButtonDefaults.buttonColors(backgroundColor = Palette.Raspberry)
-            ) {
-                Text("Allow")
-            }
+                colors = ChipDefaults.primaryChipColors(),
+                modifier = Modifier.fillMaxWidth()
+            )
+            Chip(
+                label = { Text("Open settings") },
+                onClick = onOpenSettings,
+                colors = ChipDefaults.secondaryChipColors(),
+                modifier = Modifier.fillMaxWidth()
+            )
         }
     }
 }

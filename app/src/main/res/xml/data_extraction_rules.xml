@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    API 31+ equivalent of backup_rules.xml. Device-to-device transfer is excluded on the same
+    terms as cloud backup: a position is a position wherever it is being copied to.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="rider_location.xml" />
+        <exclude domain="sharedpref" path="dock_snapshot.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="rider_location.xml" />
+        <exclude domain="sharedpref" path="dock_snapshot.xml" />
+    </device-transfer>
+</data-extraction-rules>

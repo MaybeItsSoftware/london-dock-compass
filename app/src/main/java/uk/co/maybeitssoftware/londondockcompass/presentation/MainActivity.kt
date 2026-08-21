@@ -1,8 +1,12 @@
 package uk.co.maybeitssoftware.londondockcompass.presentation
 
 import android.Manifest
+import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Bundle
+import android.provider.Settings
 import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -14,11 +18,15 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.app.ActivityCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.wear.ambient.AmbientLifecycleObserver
@@ -82,30 +90,83 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+/**
+ * What the platform actually granted, which is not the same question as "did they tap Allow".
+ *
+ * From Android 12 the system dialog offers Precise or Approximate, and picking Approximate *denies*
+ * ACCESS_FINE_LOCATION. An app that only asks about FINE reads that as a flat refusal and sits on
+ * its permission screen forever, with a button the system has stopped responding to.
+ */
+enum class LocationAccess { PRECISE, APPROXIMATE, DENIED }
+
+private fun Context.locationAccess(): LocationAccess = when {
+    granted(Manifest.permission.ACCESS_FINE_LOCATION) -> LocationAccess.PRECISE
+    granted(Manifest.permission.ACCESS_COARSE_LOCATION) -> LocationAccess.APPROXIMATE
+    else -> LocationAccess.DENIED
+}
+
+private fun Context.granted(permission: String): Boolean =
+    ActivityCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
+
+/** The way out of a permanent denial: the system settings page for this app. */
+private fun Context.openAppSettings() {
+    runCatching {
+        startActivity(
+            Intent(
+                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.fromParts("package", packageName, null)
+            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
+    }
+}
+
 @Composable
 fun LondonDockCompassApp(compass: CompassSensor, isAmbient: Boolean) {
     val context = LocalContext.current
 
     // Checked up front so the permission screen never flashes past an already-granted user.
-    var hasPermission by remember {
-        mutableStateOf(
-            ActivityCompat.checkSelfPermission(
-                context, Manifest.permission.ACCESS_FINE_LOCATION
-            ) == PackageManager.PERMISSION_GRANTED
-        )
+    var access by remember { mutableStateOf(context.locationAccess()) }
+    var alreadyAsked by rememberSaveable { mutableStateOf(false) }
+
+    // Granting in Settings and swiping back should recover the app, not require a cold start.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) access = context.locationAccess()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission(),
-        onResult = { granted -> hasPermission = granted }
+        contract = ActivityResultContracts.RequestMultiplePermissions(),
+        onResult = {
+            alreadyAsked = true
+            access = context.locationAccess()
+        }
     )
 
-    LaunchedEffect(Unit) {
-        if (!hasPermission) permissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+    // Asking for both is what lets the system offer the precise/approximate choice at all, and
+    // what lets us tell an approximate grant apart from a refusal afterwards.
+    val requestLocation = {
+        permissionLauncher.launch(
+            arrayOf(
+                Manifest.permission.ACCESS_FINE_LOCATION,
+                Manifest.permission.ACCESS_COARSE_LOCATION
+            )
+        )
     }
 
-    if (!hasPermission) {
-        PermissionScreen { permissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION) }
+    LaunchedEffect(Unit) {
+        if (access != LocationAccess.PRECISE && !alreadyAsked) requestLocation()
+    }
+
+    if (access != LocationAccess.PRECISE) {
+        PermissionScreen(
+            access = access,
+            onRequest = requestLocation,
+            onOpenSettings = context::openAppSettings
+        )
         return
     }
 

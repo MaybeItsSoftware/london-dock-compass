@@ -2,8 +2,10 @@ package uk.co.maybeitssoftware.londondockcompass.data
 
 import android.content.Context
 import android.util.Log
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import uk.co.maybeitssoftware.londondockcompass.R
 import uk.co.maybeitssoftware.londondockcompass.domain.Dock
 import uk.co.maybeitssoftware.londondockcompass.domain.GeoPoint
@@ -41,11 +43,17 @@ class DockRepository(context: Context) {
      * Falls back through a short-lived cache to the bundled coordinates, so the arrow keeps
      * pointing somewhere sensible in a tunnel, on a dead network, or against a rate limit.
      */
-    suspend fun docksNear(point: GeoPoint, radiusMetres: Int = DEFAULT_RADIUS_METRES): DockSnapshot {
+    suspend fun docksNear(
+        point: GeoPoint,
+        radiusMetres: Int = DEFAULT_RADIUS_METRES
+    ): DockSnapshot = withContext(Dispatchers.IO) {
+        // Every path through here can touch disk: the cache is SharedPreferences holding a JSON
+        // blob, and the bundled fallback parses a quarter-megabyte of dock coordinates. Callers
+        // launch from viewModelScope, so without this the whole lot runs on the main thread.
         val now = System.currentTimeMillis()
-        cached(point, now)?.let { return it }
+        cached(point, now)?.let { return@withContext it }
 
-        return lock.withLock {
+        lock.withLock {
             // Another caller may have refreshed while we waited for the lock.
             cached(point, now)?.let { return@withLock it }
             try {
@@ -61,10 +69,6 @@ class DockRepository(context: Context) {
             }
         }
     }
-
-    /** The last snapshot we managed to get, wherever it came from — for tiles and complications. */
-    fun lastKnown(): Pair<GeoPoint, DockSnapshot>? =
-        memory?.let { it.origin to it.snapshot } ?: cacheStore.read()
 
     private fun cached(point: GeoPoint, now: Long): DockSnapshot? {
         val held = memory ?: cacheStore.read()?.let { CachedAt(it.first, it.second) } ?: return null

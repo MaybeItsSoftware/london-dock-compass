@@ -4,8 +4,9 @@ import android.app.Application
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -89,7 +90,20 @@ class CompassViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Saved docks fetched by id, for the ones too far away to be in the sweep. */
     private val savedDocks = mutableMapOf<Int, Dock>()
-    private var refreshJob: Job? = null
+
+    /**
+     * Refresh requests, coalesced rather than dropped.
+     *
+     * Refusing a request while one was in flight meant a deliberate tap — pinning a destination,
+     * saving a dock — could wait out the whole twenty-second poll before its count appeared, and
+     * pinning a destination is the reason this app exists. A single-slot buffer that drops the
+     * *oldest* collapses a burst into one follow-up run while still guaranteeing that the most
+     * recent request is the one that gets served.
+     */
+    private val refreshRequests = MutableSharedFlow<Unit>(
+        extraBufferCapacity = 1,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
 
     /** False while [position] is only the seed from the last session. */
     private var hasRealFix = false
@@ -98,6 +112,7 @@ class CompassViewModel(app: Application) : AndroidViewModel(app) {
         prefs.destination?.let { pinned ->
             _state.update { it.copy(destination = DestinationState(pinned, null, DestinationHealth.UNKNOWN)) }
         }
+        viewModelScope.launch { refreshRequests.collect { runRefresh() } }
         viewModelScope.launch {
             while (isActive) {
                 refresh()
@@ -152,20 +167,21 @@ class CompassViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun refresh() {
+        refreshRequests.tryEmit(Unit)
+    }
+
+    private suspend fun runRefresh() {
         val here = position ?: return
-        if (refreshJob?.isActive == true) return
-        refreshJob = viewModelScope.launch {
-            _state.update { it.copy(isRefreshing = true) }
-            try {
-                snapshot = repository.docksNear(here)
-                refreshDestinationDock()
-                refreshSavedDocks()
-            } catch (e: Exception) {
-                Log.w(TAG, "Refresh failed", e)
-            } finally {
-                _state.update { it.copy(isRefreshing = false) }
-                recompute()
-            }
+        _state.update { it.copy(isRefreshing = true) }
+        try {
+            snapshot = repository.docksNear(here)
+            refreshDestinationDock()
+            refreshSavedDocks()
+        } catch (e: Exception) {
+            Log.w(TAG, "Refresh failed", e)
+        } finally {
+            _state.update { it.copy(isRefreshing = false) }
+            recompute()
         }
     }
 
