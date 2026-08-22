@@ -9,35 +9,54 @@ APP_ID = "uk.co.maybeitssoftware.londondockcompass"
 WEAR_AAB   = File.join(ROOT, "app", "build", "outputs", "bundle", "release", "app-release.aab")
 MOBILE_AAB = File.join(ROOT, "mobile", "build", "outputs", "bundle", "release", "mobile-release.aab")
 
+# Track ids are neither the names the Console displays nor symmetrical across
+# form factors. Both closed-testing tracks read "Closed testing - Alpha" in the
+# Console, but the wear one is genuinely "wear:Alpha" and the phone one is the
+# stock lowercase "alpha" -- so appending a single target to both prefixes, as
+# promote used to, promoted the watch and then died on "Track not found: Alpha".
+# Callers name a stage and this map resolves the id.
+#
+# Verified against `fastlane android list_tracks`, not worked out by trial and
+# error. Re-run that lane rather than editing these by hand if Play disagrees.
+TRACKS = {
+  "wear" => {
+    "internal"   => "wear:internal",
+    "closed"     => "wear:Alpha",
+    "open"       => "wear:beta",
+    "production" => "wear:production",
+  },
+  "mobile" => {
+    "internal"   => "internal",
+    "closed"     => "alpha",
+    "open"       => "beta",
+    "production" => "production",
+  },
+}.freeze
+
 platform :android do
   desc "Build both signed release AABs and upload them to their internal testing tracks"
   lane :beta do
     sh("cd #{ROOT} && ./gradlew :app:bundleRelease :mobile:bundleRelease")
-    upload_wear(track: "wear:internal", with_listing: true)
-    upload_mobile(track: "internal")
+    upload_wear(track: TRACKS["wear"]["internal"], with_listing: true)
+    upload_mobile(track: TRACKS["mobile"]["internal"])
   end
 
   desc "Build and upload only the Wear bundle"
   lane :beta_wear do
     sh("cd #{ROOT} && ./gradlew :app:bundleRelease")
-    upload_wear(track: "wear:internal", with_listing: true)
+    upload_wear(track: TRACKS["wear"]["internal"], with_listing: true)
   end
 
   desc "Build and upload only the phone bundle"
   lane :beta_mobile do
     sh("cd #{ROOT} && ./gradlew :mobile:bundleRelease")
-    upload_mobile(track: "internal")
+    upload_mobile(track: TRACKS["mobile"]["internal"])
   end
 
-  # Track ids are case-sensitive and this app's closed-testing track is "Alpha"
-  # with a capital A (Play Console: "Closed testing - Alpha"). Passing "alpha"
-  # fails with "Google Api Error: Invalid request - Track not found: wear:alpha".
-  # The live ids are: wear:internal, wear:Alpha, wear:beta, wear:production, and
-  # the same names without the prefix for the phone.
-  desc "Promote the current internal-track builds to another track"
-  desc "  fastlane android promote                      # both -> production"
-  desc "  fastlane android promote track:Alpha          # both -> closed testing"
-  desc "  fastlane android promote track:Alpha form:wear   # watch only"
+  desc "Promote the current internal-track builds to another stage"
+  desc "  fastlane android promote                        # both -> production"
+  desc "  fastlane android promote track:closed           # both -> closed testing"
+  desc "  fastlane android promote track:closed form:wear # watch only"
   lane :promote do |options|
     target = options[:track] || "production"
     # "completed" is what supply defaults to. A track that has never had a live
@@ -52,11 +71,18 @@ platform :android do
     status = options[:status] || "completed"
     form   = options[:form] || "both"
 
-    if %w[both wear].include?(form)
-      promote_track(from: "wear:internal", to: "wear:#{target}", status: status)
+    stages = TRACKS["mobile"].keys
+    unless stages.include?(target)
+      UI.user_error!("unknown stage #{target.inspect} -- expected one of #{stages.join(", ")}")
     end
-    if %w[both mobile].include?(form)
-      promote_track(from: "internal", to: target, status: status)
+
+    forms = form == "both" ? %w[wear mobile] : [form]
+    unless forms.all? { |f| TRACKS.key?(f) }
+      UI.user_error!("unknown form #{form.inspect} -- expected wear, mobile or both")
+    end
+
+    forms.each do |f|
+      promote_track(from: TRACKS[f]["internal"], to: TRACKS[f][target], status: status)
     end
   end
 
@@ -78,7 +104,7 @@ platform :android do
       package_name:            APP_ID,
       json_key_data:           ENV["PLAY_SERVICE_ACCOUNT_JSON"],
       validate_only:           options[:validate_only] || false,
-      track:                   options[:track] || "wear:internal",
+      track:                   options[:track] || TRACKS["wear"]["internal"],
       version_code:            version_code,
       skip_upload_apk:         true,
       skip_upload_aab:         true,
