@@ -37,8 +37,8 @@ android {
         // The odd slot: one applicationId ships two bundles and Play wants a unique code for
         // each. Wear takes the higher one so a device matching both gets the watch build.
         // scripts/set-gradle-version.sh keeps this and :mobile in step.
-        versionCode = 102001
-        versionName = "1.2.0"
+        versionCode = 103001
+        versionName = "1.3.0"
     }
 
     signingConfigs {

@@ -1,3 +1,20 @@
+# [1.3.0](https://github.com/MaybeItsSoftware/london-dock-compass/compare/v1.2.0...v1.3.0) (2026-08-22)
+
+
+### Bug Fixes
+
+* close the correctness gaps found by the audit ([56d5bd5](https://github.com/MaybeItsSoftware/london-dock-compass/commit/56d5bd50460ca072c7381462f4851dc4c31469c1))
+
+
+### Features
+
+* add a phone app, sharing everything but the screen ([a94d1b1](https://github.com/MaybeItsSoftware/london-dock-compass/commit/a94d1b152f067b37c26e05c4721f6a0e331143d3))
+
+
+### Performance Improvements
+
+* stop the watch working when nobody is looking ([479ddae](https://github.com/MaybeItsSoftware/london-dock-compass/commit/479ddaedf5fe66998b18c1157694153485ee3540))
+
 # [1.2.0](https://github.com/MaybeItsSoftware/london-dock-compass/compare/v1.1.0...v1.2.0) (2026-08-19)
 
 
