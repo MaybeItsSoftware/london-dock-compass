@@ -133,6 +133,12 @@ platform :android do
     )
   end
 
+  # skip_upload_changelogs matters here in a way it does not in the upload lanes.
+  # supply anchors a changelog edit to a specific version code, and it takes that
+  # code from the binary it just pushed -- but a promotion pushes no binary, so
+  # there is nothing to read it from and it dies with "Cannot find changelog
+  # because no version code given". Skipping metadata and images is not enough;
+  # changelogs are a third thing. Same root cause as the note in upload_assets.
   private_lane :promote_track do |options|
     upload_to_play_store(
       package_name:                 APP_ID,
@@ -143,6 +149,7 @@ platform :android do
       skip_upload_apk:              true,
       skip_upload_aab:              true,
       skip_upload_metadata:         true,
+      skip_upload_changelogs:       true,
       skip_upload_images:           true,
       skip_upload_screenshots:      true,
     )
