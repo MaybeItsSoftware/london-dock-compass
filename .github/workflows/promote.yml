@@ -7,14 +7,17 @@ on:
         description: 'Version to promote (e.g. v1.0.0)'
         required: true
       track:
-        description: 'Target track. Case-sensitive — closed testing is "Alpha", not "alpha".'
+        description: >-
+          Target stage. Not a raw Play track id — the two form factors do not share
+          them (wear:Alpha vs alpha), so fastlane/Fastfile maps stage + form to the
+          real id. Run the "List Play tracks" workflow to see what Play actually has.
         required: false
         default: 'production'
         type: choice
         options:
           - production
-          - Alpha
-          - beta
+          - closed
+          - open
       form:
         description: 'Which bundle(s) to promote'
         required: false
