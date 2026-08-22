@@ -63,7 +63,7 @@ android {
     buildFeatures { compose = true }
 
     lint {
-        disable += setOf("GradleDependency", "AndroidGradlePluginVersion")
+        disable += setOf("GradleDependency", "AndroidGradlePluginVersion", "OldTargetApi")
         warningsAsErrors = true
         abortOnError = true
     }

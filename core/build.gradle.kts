@@ -26,7 +26,7 @@ android {
     }
 
     lint {
-        disable += setOf("GradleDependency", "AndroidGradlePluginVersion")
+        disable += setOf("GradleDependency", "AndroidGradlePluginVersion", "OldTargetApi")
         warningsAsErrors = true
         abortOnError = true
     }

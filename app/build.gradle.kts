@@ -70,10 +70,12 @@ android {
     buildFeatures { compose = true }
 
     lint {
-        // Dependency-currency checks are time-varying: they start failing the day some unrelated
-        // library publishes a release, which is not a signal worth breaking a build over. Keeping
-        // them out is what makes the rest safe to enforce.
-        disable += setOf("GradleDependency", "AndroidGradlePluginVersion")
+        // Currency checks are time-varying: they start failing the day someone else ships
+        // something -- an unrelated library publishing a release, or Google publishing a new API
+        // level, which is what OldTargetApi turned targetSdk = 36 into. Not a signal worth
+        // breaking a build over, and keeping them out is what makes the rest safe to enforce.
+        // Bumping compileSdk/targetSdk stays a deliberate decision, not one a lint release forces.
+        disable += setOf("GradleDependency", "AndroidGradlePluginVersion", "OldTargetApi")
         warningsAsErrors = true
         abortOnError = true
     }
