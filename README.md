@@ -159,14 +159,20 @@ Run this once after cloning; after that every `git commit` is checked automatica
 
 ## Versioning & releases
 
-Versioning is fully automatic via [semantic-release](https://semantic-release.gitbook.io/) — nobody should hand-edit `versionCode` / `versionName` in `app/build.gradle.kts`.
+Versioning is fully automatic via [semantic-release](https://semantic-release.gitbook.io/) — nobody should hand-edit `versionCode` / `versionName` in either app module.
 
 On every merge to `main`, semantic-release:
-1. Analyzes conventional commit messages since the last release (`fix:` → patch, `feat:` → minor, `BREAKING CHANGE:` → major).
+1. Analyzes conventional commit messages since the last release (`fix:` → patch, `feat:` → minor, `BREAKING CHANGE:` → major). Note that `ci:`, `chore:`, `docs:`, `build:` and friends deliberately cut **no** release.
 2. Computes the next semver version.
-3. Runs `scripts/set-gradle-version.sh` to bump `versionCode`/`versionName` in `app/build.gradle.kts` — `versionCode` is derived deterministically as `MAJOR*10000 + MINOR*100 + PATCH`, which is guaranteed to increase monotonically as required by Play Store.
-4. Regenerates [`CHANGELOG.md`](./CHANGELOG.md).
+3. Regenerates [`CHANGELOG.md`](./CHANGELOG.md).
+4. Runs `scripts/set-gradle-version.sh`, which bumps `versionCode`/`versionName` in **both** `app/build.gradle.kts` and `mobile/build.gradle.kts`, and writes the Play release notes.
 5. Commits the changes (`[skip ci]`) and publishes a GitHub Release + git tag.
+
+Step 3 runs before step 4 on purpose: the script reads the newest `CHANGELOG.md` section to produce the release notes, so reversing them would quietly ship the *previous* release's notes. The plugin order in [`.releaserc.json`](./.releaserc.json) is what enforces it.
+
+`versionCode` is derived deterministically as `(MAJOR*10000 + MINOR*100 + PATCH) * 10`, plus a per-form-factor slot — `0` for the phone, `1` for the watch. One `applicationId` ships two bundles and Play demands a unique code for each; the watch takes the higher slot so a device matching both is handed the watch build. Because semantic-release only bumps upward, both codes increase monotonically as Play requires.
+
+Play shows testers whatever sits in `fastlane/metadata/android/en-GB/changelogs/<versionCode>.txt`, one file per code, so the same notes are written twice. They are trimmed to Play's 500-character limit at a line boundary. If no `CHANGELOG.md` section matches the version being released, the script fails the release rather than shipping empty notes.
 
 ## Building a release locally
 
@@ -178,30 +184,37 @@ This requires a `keystore.properties` file at the repo root (gitignored, never c
 
 ## CI/CD pipeline
 
-Four GitHub Actions workflows chain together:
+Five GitHub Actions workflows chain together:
 
 | Workflow | Trigger | What it does |
 |---|---|---|
-| `ci.yml` | PR opened against `main` | `./gradlew lint` + `./gradlew test` |
-| `release.yml` | Push to `main` | Re-runs lint/test, then `npx semantic-release` (versions the app, tags, publishes the GitHub Release) |
-| `deploy.yml` | `release.yml` completes successfully | Decodes the release keystore from a secret, builds a signed AAB (`./gradlew bundleRelease`), uploads it to the Play Store **internal testing** track via `bundle exec fastlane android beta` |
-| `promote.yml` | Manual (`workflow_dispatch`) | Promotes the current internal-track build to **production** via `bundle exec fastlane android promote` |
+| `ci.yml` | PR opened against `main` | `./gradlew lint` + `./gradlew test` + a minified `assembleRelease` |
+| `release.yml` | Push to `main` | Re-runs lint/test, then `npx semantic-release` (versions both modules, tags, publishes the GitHub Release) |
+| `deploy.yml` | `release.yml` completes successfully | Decodes the release keystore from a secret, builds **both** signed AABs, and uploads each to its internal track — watch to `wear:internal`, phone to `internal` — via `bundle exec fastlane android beta` |
+| `promote.yml` | Manual (`workflow_dispatch`) | Promotes already-uploaded builds off the internal tracks to a chosen stage and form factor via `bundle exec fastlane android promote` |
+| `play-tracks.yml` | Manual (`workflow_dispatch`) | Read-only. Asks Play which tracks exist and what sits on them, via `bundle exec fastlane android list_tracks` |
 
-Promotion to production is intentionally a manual, explicit action — it's never triggered automatically.
+Promotion is intentionally manual — it's never triggered automatically. It takes a **stage** (`production`, `closed`, `open`), not a raw Play track id, because the two form factors do not share ids: closed testing is `wear:Alpha` on the watch and `alpha` on the phone, despite both reading "Closed testing - Alpha" in the Console. `TRACKS` in [`fastlane/Fastfile`](./fastlane/Fastfile) maps stage + form to the real id; run `play-tracks.yml` rather than guessing if Play ever disagrees.
+
+Two things worth knowing before promoting:
+
+- **Pass `version`** (e.g. `v1.3.0`) to pin exactly which release moves. Left blank, supply promotes whatever happens to be sitting on the internal tracks at that moment. The workflow always runs `main`'s Fastfile regardless, so a pipeline fix applies to promoting older releases too.
+- **A track that has never had a live rollout only accepts `status: draft`.** `completed` is rejected there. Finish that first rollout by hand in Play Console — a release left in Draft is invisible to testers however healthy the bundle is.
+
+Installing the phone app does **not** put the watch app on a paired watch; Play has no such delivery. The watch install is initiated separately, from the Wear OS section of the phone's Play listing or from the Play Store on the watch. Closed-track builds are generally not discoverable by search on the watch, so use the phone listing.
 
 There's also a scheduled `reseed-dock-locations.yml` workflow (weekly) that refreshes `docklocations.json` from the live TfL API and opens a PR if anything changed.
 
-## One-time setup required
+## One-time setup
 
-The pipeline above is wired up but not yet live. Before it will work, a repo admin needs to:
+The pipeline is live — this section is what a fresh clone or a new app would need, not outstanding work.
 
-1. **Tag a baseline release**, matching the current `versionCode = 2` / `versionName = "1.0"`:
+1. **A reachable baseline tag.** `release.yml` deliberately fails loudly if no reachable `vX.Y.Z` tag exists, rather than letting semantic-release silently default to `1.0.0` and ship a wrong version:
    ```
    git tag v1.0.0
    git push origin v1.0.0
    ```
-   `release.yml` deliberately fails loudly if no reachable `vX.Y.Z` tag exists, rather than letting semantic-release silently default to `1.0.0`.
-2. **Add the following GitHub repo secrets** (Settings → Secrets and variables → Actions):
+2. **The following GitHub repo secrets** (Settings → Secrets and variables → Actions):
    - `ANDROID_KEYSTORE_BASE64`
    - `KEYSTORE_PASSWORD`
    - `KEY_ALIAS`

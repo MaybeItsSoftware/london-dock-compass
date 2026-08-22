@@ -53,12 +53,32 @@ platform :android do
     upload_mobile(track: TRACKS["mobile"]["internal"])
   end
 
-  desc "Promote the current internal-track builds to another stage"
-  desc "  fastlane android promote                        # both -> production"
-  desc "  fastlane android promote track:closed           # both -> closed testing"
-  desc "  fastlane android promote track:closed form:wear # watch only"
+  # semver -> the two version codes scripts/set-gradle-version.sh derives from it.
+  # Kept in step with that script by hand; the formula is stated in both places
+  # because neither can import the other.
+  def version_codes(version)
+    core = version.sub(/\Av/, "").split(/[-+]/).first
+    major, minor, patch = core.split(".").map(&:to_i)
+    unless [major, minor, patch].all? && core =~ /\A\d+\.\d+\.\d+\z/
+      UI.user_error!("version #{version.inspect} is not a plain semver like v1.3.0")
+    end
+    base = ((major * 10_000) + (minor * 100) + patch) * 10
+    { "mobile" => base, "wear" => base + 1 }
+  end
+
+  desc "Promote already-uploaded builds to another stage"
+  desc "  fastlane android promote                                    # both -> production"
+  desc "  fastlane android promote track:closed                       # both -> closed testing"
+  desc "  fastlane android promote track:closed form:wear             # watch only"
+  desc "  fastlane android promote track:closed version:v1.3.0        # pin the release promoted"
   lane :promote do |options|
     target = options[:track] || "production"
+    # Without this, supply promotes whatever happens to be sitting on the source
+    # track, which is not necessarily what the caller named -- the workflow's
+    # version input used to select nothing but a git ref, so asking for v1.2.0
+    # would silently ship whatever internal held at that moment. Pinning the code
+    # makes the request and the artefact the same thing.
+    codes = options[:version] ? version_codes(options[:version]) : {}
     # "completed" is what supply defaults to. A track that has never had a live
     # rollout only accepts "draft" -- the API rejects completed there with
     # "Only releases with status draft may be created on draft app". Pass
@@ -82,7 +102,7 @@ platform :android do
     end
 
     forms.each do |f|
-      promote_track(from: TRACKS[f]["internal"], to: TRACKS[f][target], status: status)
+      promote_track(from: TRACKS[f]["internal"], to: TRACKS[f][target], status: status, version_code: codes[f])
     end
   end
 
@@ -205,6 +225,7 @@ platform :android do
       track:                        options[:from],
       track_promote_to:             options[:to],
       track_promote_release_status: options[:status],
+      version_code:                 options[:version_code],
       json_key_data:                ENV["PLAY_SERVICE_ACCOUNT_JSON"],
       skip_upload_apk:              true,
       skip_upload_aab:              true,
