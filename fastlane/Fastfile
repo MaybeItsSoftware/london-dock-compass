@@ -89,6 +89,40 @@ platform :android do
     )
   end
 
+  # Play's track ids are not the names the Console shows you, and they are not
+  # symmetrical across form factors: "Closed testing - Alpha" is wear:Alpha on the
+  # watch side and something else on the phone side, which is how `promote
+  # track:Alpha` came to half-succeed -- wear promoted, phone died on "Track not
+  # found: Alpha". Guessing costs a failed run each time, so ask Play instead.
+  desc "Print every track id Play knows about, with the releases sitting on it"
+  lane :list_tracks do
+    require "supply"
+
+    Supply.config = FastlaneCore::Configuration.create(
+      Supply::Options.available_options,
+      {
+        package_name:  APP_ID,
+        json_key_data: ENV["PLAY_SERVICE_ACCOUNT_JSON"],
+        track:         "internal",
+      },
+    )
+
+    client = Supply::Client.make_from_config
+    client.begin_edit(package_name: APP_ID)
+    begin
+      tracks = client.tracks
+      UI.user_error!("Play returned no tracks at all for #{APP_ID}") if tracks.empty?
+      tracks.each do |track|
+        releases = Array(track.releases).map do |release|
+          "#{release.status} #{release.name.inspect} codes=#{Array(release.version_codes).join(",")}"
+        end
+        UI.important("#{track.track.inspect} -> #{releases.empty? ? "(no releases)" : releases.join(" | ")}")
+      end
+    ensure
+      client.abort_current_edit
+    end
+  end
+
   desc "Download metadata and screenshots from Google Play Store"
   lane :download_metadata do
     sh("bundle exec fastlane supply init --json_key_data '#{ENV["PLAY_SERVICE_ACCOUNT_JSON"]}' --metadata_path '#{File.join(__dir__, "metadata", "android")}'")
