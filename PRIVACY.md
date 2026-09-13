@@ -1,75 +1,110 @@
-# Privacy Policy for London Dock Compass
+# Privacy Policy
 
-Last updated: September 3, 2026
+**Last Updated:** September 13, 2026
 
-London Dock Compass is published by **MaybeItsSoftware Ltd** ("we", "our", or "us"), a company registered in the United Kingdom, which is the data controller for any personal data described in this policy. We are committed to protecting your privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our Wear OS application, **London Dock Compass** (the "App").
+This Privacy Policy explains how **MaybeItsSoftware Ltd** ("we", "us", or "our"), a company registered in the United Kingdom, handles your information when you use **London Dock Compass** (the "App") on Wear OS watches and Android phones. MaybeItsSoftware Ltd is the data controller for any personal data described in this policy.
 
-Please read this Privacy Policy carefully. If you do not agree with the terms of this Privacy Policy, please do not access the App.
+The current version of this policy is published at [maybeitssoftware.co.uk/london-dock-compass/privacy](https://www.maybeitssoftware.co.uk/london-dock-compass/privacy).
 
----
-
-## 1. Information We Collect
-
-### A. Location Information
-To provide the core functionality of the App (pointing you toward the nearest Santander Cycles docking stations), the App requires access to your device's location. 
-* **Fine and Coarse Location:** With your permission, the App accesses your device's real-time GPS coordinates and location data.
-* **On-Device Processing:** Your location coordinates are processed strictly **on your Wear OS device** to calculate the distance and compass bearing to the nearest docking stations. We do **not** transmit, store, or share your raw location coordinates with any servers.
-
-### B. Device Sensors
-* **Compass/Magnetometer:** The App accesses your device's heading/compass sensors to determine which direction your watch is pointing, enabling the compass needle to rotate correctly. This sensor data is processed entirely on-device and is never stored or transmitted.
-
-### C. Network Requests & Third-Party APIs
-* **TfL BikePoint API:** To retrieve real-time bike and dock availability, the App queries the Transport for London (TfL) BikePoint API. 
-* **Anonymity:** These requests are anonymous. No personal identifiers, IP addresses (beyond standard network transport headers), or location coordinates are sent to TfL as part of these queries.
-
-### D. No Personal Information
-We do not collect, store, or transmit any personally identifiable information (PII) such as your name, email address, phone number, contacts, or account credentials.
+The App has no accounts, no analytics, no advertising and no crash reporting. We do not operate any server that receives data from the App.
 
 ---
 
-## 2. How We Use Your Information
+## 1. Information We Do Not Collect (No Personal Data)
 
-We use the data accessed by the App solely to:
-* Determine the closest bike docking stations relative to your current position.
-* Display the distance and direction (compass bearing) to those stations.
-* Fetch and show live bike/e-bike/empty-dock counts on your Wear OS screen and watch face complication.
+We do not collect, store, or transmit any of your personal data to servers owned or operated by MaybeItsSoftware Ltd.
 
----
-
-## 3. Data Sharing and Disclosure
-
-* **No Data Selling:** We do not sell, trade, or otherwise transfer your information to third parties.
-* **Service Providers:** The App utilizes Google Play Services (such as Google Play Services Location) to obtain device coordinates. Google may collect data in accordance with their own privacy policies.
+* We do not collect your name, email address, phone number, contacts, or account credentials.
+* There is no account registration or sign-in.
+* There are no analytics, advertising, or crash-reporting services in the App.
 
 ---
 
-## 4. Data Retention
+## 2. Location Information
 
-Because all location and sensor data is processed in memory on your Wear OS device and never sent to a server, **we retain zero user data**.
+The App's core purpose is to point you to nearby Santander Cycles docking stations, so it asks for permission to use your device's location (`ACCESS_FINE_LOCATION` and `ACCESS_COARSE_LOCATION`). You can use the App without granting it, but it cannot find docks near you.
 
----
-
-## 5. Security of Your Information
-
-We use standard Android security practices and permission models to ensure that access to your location and sensors is secure. You can revoke the App's access to your location at any time through your Wear OS device settings (**Settings > Apps & notifications > App permissions > London Dock Compass**).
-
----
-
-## 6. Children's Privacy
-
-Our App does not collect any information from children under the age of 13, as we do not collect any personal information whatsoever.
+* **On-device calculation:** Distance, compass bearing, and the ranking of nearby docks are calculated on your device.
+* **Nearby dock lookup:** To fetch live availability, the App sends your current position to the Transport for London (TfL) BikePoint API, asking for docks within 800 metres of that point. See Section 4.
+* **Last known position:** The App stores your most recent position on your device so the tile and watch face complication can still show nearby docks when the system does not hand them a fresh location. This is excluded from Android cloud backup and device-to-device transfer.
+* **Location provider:** Your position is obtained through Google Play services location, which Google operates under its own privacy policy.
 
 ---
 
-## 7. Changes to This Privacy Policy
+## 3. Device Sensors
 
-We may update our Privacy Policy from time to time. We will notify you of any changes by posting the new Privacy Policy on this page and updating the "Last updated" date at the top of this document.
+On Wear OS, the App reads the device's rotation vector sensor (which combines compass, accelerometer and gyroscope readings) to turn the compass needle towards a dock. Sensor readings are used in memory only; they are never stored or transmitted.
 
 ---
 
-## 8. Contact Us
+## 4. Transport for London (TfL)
 
-If you have any questions or suggestions about this Privacy Policy, or wish to exercise your rights under the UK GDPR, please contact us:
+Live bike, e-bike and space counts come from the TfL BikePoint API (`api.tfl.gov.uk`). Requests to TfL contain:
+
+* your current position and a search radius, to find nearby docks;
+* the IDs of docks you have saved or pinned, to refresh their counts; and
+* an application key that identifies the App, not you.
+
+As with any internet request, TfL receives your device's IP address. Requests carry no account, name, or other identifier linking them to you. TfL handles this data under its own privacy policy, available on the TfL website.
+
+Recent results are reused for a short time instead of repeating a request. If a request fails, the App falls back to cached results or to dock locations bundled with the App.
+
+---
+
+## 5. Local Data Storage
+
+The following data is stored on your device only:
+
+* **Preferences:** your chosen mode (bikes, e-bikes or spaces), saved docks, and pinned destination dock.
+* **Dock cache:** the most recent availability results and the position they were fetched for, so the App works briefly offline. Excluded from backup and device transfer.
+* **Last known position:** as described in Section 2. Excluded from backup and device transfer.
+
+Your preferences (but not your position or the dock cache) may be included in your Google account's Android backup if you have backup enabled.
+
+You can delete all of this data at any time by clearing the App's storage or uninstalling the App.
+
+---
+
+## 6. Watch and Phone Sync
+
+If you use the App on both a paired phone and watch, your saved docks and pinned destination dock are synced between them using the Google Play services Wearable Data Layer. This contains dock IDs, dock names and dock positions, never your own position. The sync goes directly between your devices, or through Google's services when they are not connected nearby; it never passes through our servers.
+
+---
+
+## 7. Data Sharing and Disclosure
+
+* **No selling:** We do not sell, trade, or rent your information.
+* **Third parties:** The only third parties involved are TfL (Section 4) and Google Play services (Sections 2, 5 and 6), each acting under its own privacy policy.
+
+---
+
+## 8. Data Retention
+
+We hold no data about you, so there is nothing for us to retain or delete. Data stored on your device remains there until you clear the App's storage or uninstall it.
+
+---
+
+## 9. Your Choices
+
+You can revoke the App's location permission at any time in your device's settings (for example, **Settings > Apps > London Dock Compass > Permissions**). Because we hold no personal data about you, there is nothing for us to access, correct, or erase on request, but you are welcome to contact us with any question about your rights under the UK GDPR.
+
+---
+
+## 10. Children's Privacy
+
+The App does not knowingly collect personal information from anyone, including children under 13.
+
+---
+
+## 11. Changes to This Privacy Policy
+
+We may update this Privacy Policy from time to time. Changes are published at the address above, and the "Last Updated" date at the top of this policy is revised.
+
+---
+
+## 12. Contact Us
+
+If you have any questions about this Privacy Policy, or wish to exercise your rights under the UK GDPR, please contact us:
 
 * **Data Controller:** MaybeItsSoftware Ltd, United Kingdom
 * **Email:** [privacy@maybeitssoftware.co.uk](mailto:privacy@maybeitssoftware.co.uk)

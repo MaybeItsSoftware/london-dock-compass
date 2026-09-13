@@ -48,6 +48,15 @@ turns up on the other over the Wear Data Layer — so you can pin where you are 
 phone, at home, before you have touched a bike. Ride mode deliberately stays local: it answers
 "what am I doing in the next ten minutes", which belongs to the device in your hand.
 
+## Privacy
+
+[`PRIVACY.md`](PRIVACY.md) is the privacy policy. The MaybeItsSoftware website renders it live from
+this repo's default branch at
+[maybeitssoftware.co.uk/london-dock-compass/privacy](https://www.maybeitssoftware.co.uk/london-dock-compass/privacy),
+which is the URL to give Play Console. Keep the file at the repo root under that name, in plain
+Markdown (the site does not render tables or raw HTML), and update it in the same change as any
+new permission, network call or synced field.
+
 ## Getting started
 
 **Requirements:** Android Studio (current stable), JDK 17.
