@@ -1,0 +1,3 @@
+Bug Fixes
+
+- meet Wear OS launch requirements and refresh dock locations

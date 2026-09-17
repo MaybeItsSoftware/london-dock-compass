@@ -30,8 +30,8 @@ android {
         // Lower than the watch's floor: a phone app has no reason to require Wear OS 3.
         minSdk = 26
         targetSdk = 36
-        versionCode = 103000
-        versionName = "1.3.0"
+        versionCode = 103010
+        versionName = "1.3.1"
     }
 
     signingConfigs {

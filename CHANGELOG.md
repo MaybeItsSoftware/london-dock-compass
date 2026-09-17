@@ -1,3 +1,10 @@
+## [1.3.1](https://github.com/MaybeItsSoftware/london-dock-compass/compare/v1.3.0...v1.3.1) (2026-09-17)
+
+
+### Bug Fixes
+
+* meet Wear OS launch requirements and refresh dock locations ([d46329e](https://github.com/MaybeItsSoftware/london-dock-compass/commit/d46329e51f74bf1ae1bd797f6c58e45585c37b87))
+
 # [1.3.0](https://github.com/MaybeItsSoftware/london-dock-compass/compare/v1.2.0...v1.3.0) (2026-08-22)
 
 
