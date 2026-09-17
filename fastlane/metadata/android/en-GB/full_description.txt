@@ -1,0 +1,17 @@
+Find the Santander Cycles dock you need with London Dock Compass for Wear OS and Android. Check bikes, e-bikes and empty docking spaces using availability from Transport for London's BikePoint service.
+
+ON YOUR WEAR OS WATCH
+Follow the compass arrow towards a nearby dock. Switch between bikes, e-bikes and spaces to prioritise docks that can help you. Save your favourite docks, pin a destination and get vibration alerts as you approach or when your destination is running out of spaces.
+
+WEAR OS TILE
+Add the Nearby docks Tile to see up to three nearby docks with availability counts and distances, one swipe from your watch face. Tap the Tile to open the compass.
+
+WATCH FACE COMPLICATION
+Add the Nearest dock complication to a compatible watch face to see availability at the nearest suitable dock. It follows the mode selected in the watch app and supports short text, long text, ranged value and icon complication slots. The information shown depends on the slot type; text slots include distance. Complications refresh periodically, so open the app for the latest availability.
+
+ON YOUR ANDROID PHONE
+Browse nearby docks and check availability before setting off. Save docks and pin a destination on either device, with saved docks and your destination shared between your phone and watch when connected.
+
+The Wear OS app works independently without the phone app. Location permission helps find nearby docks, and an internet connection is needed for current availability. When offline, bundled dock locations remain available and missing availability is shown as unknown. Cached counts are labelled in the app.
+
+London Dock Compass is an independent app and is not affiliated with Transport for London or Santander. Availability can change before you arrive.

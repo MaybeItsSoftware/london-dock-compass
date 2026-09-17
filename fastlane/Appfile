@@ -1,2 +1,2 @@
-json_key_data(ENV["PLAY_SERVICE_ACCOUNT_JSON"]) if ENV["PLAY_SERVICE_ACCOUNT_JSON"]
+# Service account JSON is passed to supply by the lanes in Fastfile.
 package_name("uk.co.maybeitssoftware.londondockcompass")

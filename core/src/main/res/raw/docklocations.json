@@ -1429,18 +1429,6 @@
       "installDate": 1279106880000,
       "removalDate": null,
       "temporary": false
-    },
-    {
-      "id": 301,
-      "name": "Marylebone Lane, Marylebone",
-      "terminalName": 1152,
-      "lat": 51.514759,
-      "long": -0.148105,
-      "installed": true,
-      "locked": false,
-      "installDate": 1279809000000,
-      "removalDate": null,
-      "temporary": false
     }
   ],
   "gcpvju1": [
@@ -3649,6 +3637,20 @@
       "temporary": false
     }
   ],
+  "gcpuuvz": [
+    {
+      "id": 267,
+      "name": "Regency Street, Westminster",
+      "terminalName": 1155,
+      "lat": 51.49206,
+      "long": -0.132224,
+      "installed": true,
+      "locked": false,
+      "installDate": 1279714740000,
+      "removalDate": null,
+      "temporary": false
+    }
+  ],
   "gcpuuwp": [
     {
       "id": 268,
@@ -4803,6 +4805,20 @@
       "installed": true,
       "locked": false,
       "installDate": 1290603600000,
+      "removalDate": null,
+      "temporary": false
+    }
+  ],
+  "gcpvh93": [
+    {
+      "id": 366,
+      "name": "Millennium Hotel, Mayfair",
+      "terminalName": 1230,
+      "lat": 51.510919,
+      "long": -0.151126,
+      "installed": true,
+      "locked": false,
+      "installDate": 1290686880000,
       "removalDate": null,
       "temporary": false
     }
@@ -7113,20 +7129,6 @@
       "temporary": false
     }
   ],
-  "gcpv536": [
-    {
-      "id": 560,
-      "name": "Ladbroke Grove Central, Ladbroke Grove",
-      "terminalName": 200015,
-      "lat": 51.511624,
-      "long": -0.205921,
-      "installed": true,
-      "locked": false,
-      "installDate": null,
-      "removalDate": null,
-      "temporary": false
-    }
-  ],
   "gcpvp48": [
     {
       "id": 561,
@@ -7403,6 +7405,20 @@
       "installed": true,
       "locked": false,
       "installDate": 1332406320000,
+      "removalDate": null,
+      "temporary": false
+    }
+  ],
+  "gcpvnht": [
+    {
+      "id": 588,
+      "name": "Hoxton Street, Hoxton",
+      "terminalName": 200071,
+      "lat": 51.52959,
+      "long": -0.0801,
+      "installed": true,
+      "locked": false,
+      "installDate": 1330937820000,
       "removalDate": null,
       "temporary": false
     }

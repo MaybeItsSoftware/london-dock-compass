@@ -110,7 +110,7 @@ platform :android do
   # release, so this needs no build and no track -- useful after regenerating
   # branding/ when the current version code is already live and a fresh upload
   # would be rejected as a duplicate.
-  desc "Push store listing images/screenshots to Play without shipping a build"
+  desc "Push store listing description/images/screenshots to Play without shipping a build"
   lane :upload_assets do |options|
     # supply anchors a listing edit to a release even when changelogs are
     # skipped -- without a version code it dies with "Could not find release
@@ -129,7 +129,7 @@ platform :android do
       skip_upload_apk:         true,
       skip_upload_aab:         true,
       skip_upload_changelogs:  true,
-      skip_upload_metadata:    true,
+      skip_upload_metadata:    false,
       skip_upload_images:      false,
       skip_upload_screenshots: false,
     )
@@ -181,10 +181,8 @@ platform :android do
   # lane only is what stops the two form factors racing to write the same
   # listing in separate edits.
   #
-  # metadata (title/descriptions) stays skipped because there are no .txt files
-  # under fastlane/metadata/android/en-GB -- supply would have nothing to send.
-  # Run `fastlane android download_metadata` to seed them from the live listing
-  # first, then flip this to false.
+  # The checked-in full description includes the Wear OS Tile and complication.
+  # Upload it with the images from the Wear lane so the shared listing has one writer.
   private_lane :upload_wear do |options|
     UI.user_error!("missing #{WEAR_AAB} -- run ./gradlew :app:bundleRelease") unless File.exist?(WEAR_AAB)
     upload_to_play_store(
@@ -193,7 +191,7 @@ platform :android do
       aab:                     WEAR_AAB,
       json_key_data:           ENV["PLAY_SERVICE_ACCOUNT_JSON"],
       skip_upload_apk:         true,
-      skip_upload_metadata:    true,
+      skip_upload_metadata:    !options[:with_listing],
       skip_upload_images:      !options[:with_listing],
       skip_upload_screenshots: !options[:with_listing],
     )

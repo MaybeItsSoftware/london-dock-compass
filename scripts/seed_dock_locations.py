@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Re-seed app/src/main/res/raw/docklocations.json from the live TfL BikePoint API.
+"""Re-seed core/src/main/res/raw/docklocations.json from the live TfL BikePoint API.
 
 Fetches every Santander Cycles docking station, converts each to the
-`Station` shape the app expects, buckets them by geohash (precision 7 --
+bundled station shape both apps expect, buckets them by geohash (precision 7 --
 matching com.github.davidmoten.geo.GeoHash.encodeHash(lat, lon, 7) used at
-runtime in MainActivity.kt), and writes the result back to the raw resource
+runtime in BundledDockSource.kt), and writes the result back to the raw resource
 file.
 """
 from __future__ import annotations
@@ -16,7 +16,7 @@ import urllib.request
 
 TFL_BIKEPOINT_URL = "https://api.tfl.gov.uk/BikePoint/"
 OUTPUT_PATH = os.path.join(
-    os.path.dirname(__file__), "..", "app", "src", "main", "res", "raw", "docklocations.json"
+    os.path.dirname(__file__), "..", "core", "src", "main", "res", "raw", "docklocations.json"
 )
 GEOHASH_PRECISION = 7
 GEOHASH_BASE32 = "0123456789bcdefghjkmnpqrstuvwxyz"

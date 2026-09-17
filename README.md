@@ -154,6 +154,11 @@ also re-stamps the mark and wordmark onto the phone/tablet screenshots in
 Edit the constants at the top of the script rather than the generated files —
 `splash_icon.xml` in particular is overwritten wholesale.
 
+The Wear OS startup screen uses `res/drawable/splash_screen.xml` to centre the
+round launcher icon at 48dp on black, following the Wear OS branded launch
+guidelines. This wrapper is maintained separately from generated branding;
+the generated `splash_icon.xml` is used for the Tile preview.
+
 ## Conventional Commits
 
 All commits must follow [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `chore:`, `refactor:`, etc.) — this drives the automatic versioning described below. It's enforced locally by a husky `commit-msg` git hook.
@@ -205,6 +210,13 @@ Five GitHub Actions workflows chain together:
 
 Promotion is intentionally manual — it's never triggered automatically. It takes a **stage** (`production`, `closed`, `open`), not a raw Play track id, because the two form factors do not share ids: closed testing is `wear:Alpha` on the watch and `alpha` on the phone, despite both reading "Closed testing - Alpha" in the Console. `TRACKS` in [`fastlane/Fastfile`](./fastlane/Fastfile) maps stage + form to the real id; run `play-tracks.yml` rather than guessing if Play ever disagrees.
 
+The shared Play listing description is maintained in
+[`fastlane/metadata/android/en-GB/full_description.txt`](./fastlane/metadata/android/en-GB/full_description.txt),
+including the Wear OS Tile and watch face complication. Wear uploads send it
+alongside the listing images. To update the listing without a new build, run
+`bundle exec fastlane android upload_assets`. Listing edits apply globally
+when committed, even when the build is uploaded to an internal track.
+
 Two things worth knowing before promoting:
 
 - **Pass `version`** (e.g. `v1.3.0`) to pin exactly which release moves. Left blank, supply promotes whatever happens to be sitting on the internal tracks at that moment. The workflow always runs `main`'s Fastfile regardless, so a pipeline fix applies to promoting older releases too.
@@ -212,7 +224,12 @@ Two things worth knowing before promoting:
 
 Installing the phone app does **not** put the watch app on a paired watch; Play has no such delivery. The watch install is initiated separately, from the Wear OS section of the phone's Play listing or from the Play Store on the watch. Closed-track builds are generally not discoverable by search on the watch, so use the phone listing.
 
-There's also a scheduled `reseed-dock-locations.yml` workflow (weekly) that refreshes `docklocations.json` from the live TfL API and opens a PR if anything changed.
+The `reseed-dock-locations.yml` workflow runs on every push to `main`, weekly on
+Monday, and on manual dispatch. It fetches all Santander Cycles docks from the
+TfL BikePoint API and opens or updates a refresh PR when
+`core/src/main/res/raw/docklocations.json` changes. Both apps use this bundled
+list after the PR is merged and a new build ships. Refreshes are serialised;
+the script refuses to replace the list if TfL returns fewer than 700 stations.
 
 ## One-time setup
 
