@@ -7129,6 +7129,20 @@
       "temporary": false
     }
   ],
+  "gcpv536": [
+    {
+      "id": 560,
+      "name": "Ladbroke Grove Central, Ladbroke Grove",
+      "terminalName": 200015,
+      "lat": 51.511624,
+      "long": -0.205921,
+      "installed": true,
+      "locked": false,
+      "installDate": null,
+      "removalDate": null,
+      "temporary": false
+    }
+  ],
   "gcpvp48": [
     {
       "id": 561,
