@@ -1,3 +1,10 @@
+# [1.4.0](https://github.com/MaybeItsSoftware/london-dock-compass/compare/v1.3.1...v1.4.0) (2026-09-25)
+
+
+### Features
+
+* show all counts, search and sort on phone, pick-up and drop-off pins ([8d5392c](https://github.com/MaybeItsSoftware/london-dock-compass/commit/8d5392cb23dba931b8aab7eed02fd81737052afc))
+
 ## [1.3.1](https://github.com/MaybeItsSoftware/london-dock-compass/compare/v1.3.0...v1.3.1) (2026-09-17)
 
 
