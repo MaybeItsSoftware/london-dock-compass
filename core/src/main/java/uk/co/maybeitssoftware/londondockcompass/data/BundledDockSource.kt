@@ -23,6 +23,13 @@ class BundledDockSource(private val context: Context) {
         }
     }
 
+    /**
+     * Every dock in the city, for search.
+     *
+     * Parses the whole bundle on first use, so call it off the main thread.
+     */
+    val all: List<Dock> by lazy { byGeoHash.values.flatten().map { it.toDock() } }
+
     /** Widens the geohash ring until it has enough candidates or runs out of patience. */
     fun docksNear(point: GeoPoint, minCount: Int = 8): List<Dock> {
         val origin = GeoHash.encodeHash(point.lat, point.lon, GEOHASH_PRECISION)

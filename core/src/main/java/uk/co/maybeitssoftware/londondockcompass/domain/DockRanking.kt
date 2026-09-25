@@ -46,3 +46,29 @@ fun rankDocks(
         .sortedWith(compareBy({ !it.isUsable }, { it.distanceMetres }))
         .take(limit)
         .toList()
+
+/**
+ * Orders in-service docks by distance alone.
+ *
+ * For surfaces that show bikes, e-bikes and spaces side by side rather than one mode's count: with
+ * every figure on screen there is no single "usable" to sort on, so the nearest dock simply leads.
+ * [RankedDock.count] is left null — read [Dock.availability] for the figures.
+ */
+fun nearestDocks(
+    from: GeoPoint,
+    docks: List<Dock>,
+    limit: Int = 8
+): List<RankedDock> =
+    docks.asSequence()
+        .filter { it.inService }
+        .map { dock ->
+            RankedDock(
+                dock = dock,
+                distanceMetres = from.distanceTo(dock.position).roundToInt(),
+                bearingDegrees = from.bearingTo(dock.position),
+                count = null
+            )
+        }
+        .sortedBy { it.distanceMetres }
+        .take(limit)
+        .toList()

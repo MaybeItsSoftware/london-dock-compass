@@ -9,13 +9,14 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.conflate
 import uk.co.maybeitssoftware.londondockcompass.domain.Destination
 import uk.co.maybeitssoftware.londondockcompass.domain.GeoPoint
+import uk.co.maybeitssoftware.londondockcompass.domain.Purpose
 import uk.co.maybeitssoftware.londondockcompass.domain.RideMode
 
 /**
- * The handful of things worth remembering between rides: what you were doing, which docks are
- * yours, where you are heading, and roughly where you were.
+ * The handful of things worth remembering between rides: how you like the list sorted, which docks
+ * are yours, where you are heading, and roughly where you were.
  *
- * Split across two files on purpose. What you chose — mode, saved docks, destination — is worth
+ * Split across two files on purpose. What you chose — sort, saved docks, destination — is worth
  * restoring onto a new watch. Where you *were* is not: it is a cold-start seed that the first fix
  * overwrites, and the privacy policy promises coordinates never leave the device. Keeping it in its
  * own file is what lets `backup_rules.xml` exclude one and keep the other.
@@ -36,6 +37,16 @@ class RiderPreferences(context: Context) {
         if (prefs.contains(LEGACY_KEY_LAT)) {
             prefs.edit { remove(LEGACY_KEY_LAT); remove(LEGACY_KEY_LON) }
         }
+        // The ride mode is gone: every surface shows all three figures now. Carry a phone user's
+        // last choice over as their sort, since it ordered their list the same way.
+        if (prefs.contains(LEGACY_KEY_MODE)) {
+            val legacy = prefs.getString(LEGACY_KEY_MODE, null)
+                ?.let { name -> RideMode.entries.firstOrNull { it.name == name } }
+            prefs.edit {
+                remove(LEGACY_KEY_MODE)
+                if (legacy != null && !prefs.contains(KEY_SORT)) putString(KEY_SORT, legacy.name)
+            }
+        }
     }
 
     /**
@@ -51,11 +62,17 @@ class RiderPreferences(context: Context) {
         awaitClose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
     }.conflate()
 
-    /** Reopening the app mid-journey should not silently forget you were looking for a space. */
-    var mode: RideMode
-        get() = runCatching { RideMode.valueOf(prefs.getString(KEY_MODE, null)!!) }
-            .getOrDefault(RideMode.HIRE)
-        set(value) = prefs.edit { putString(KEY_MODE, value.name) }
+    /**
+     * What the phone list puts first: docks with this, nearest first. Null is plain distance.
+     *
+     * Per device, and deliberately not synced — see [RiderState].
+     */
+    var sortBy: RideMode?
+        get() = prefs.getString(KEY_SORT, null)
+            ?.let { name -> RideMode.entries.firstOrNull { it.name == name } }
+        set(value) = prefs.edit {
+            if (value == null) remove(KEY_SORT) else putString(KEY_SORT, value.name)
+        }
 
     /** Commuters use the same two or three docks every day; those belong at your fingertips. */
     var favourites: Set<Int>
@@ -86,7 +103,10 @@ class RiderPreferences(context: Context) {
                 name = prefs.getString(KEY_DESTINATION_NAME, "").orEmpty(),
                 position = prefs.readPoint(KEY_DESTINATION_LAT, KEY_DESTINATION_LON)
                     ?: prefs.readLegacyPoint(LEGACY_KEY_DESTINATION_LAT, LEGACY_KEY_DESTINATION_LON)
-                    ?: GeoPoint(0.0, 0.0)
+                    ?: GeoPoint(0.0, 0.0),
+                purpose = Purpose.entries.firstOrNull {
+                    it.name == prefs.getString(KEY_DESTINATION_PURPOSE, null)
+                } ?: Purpose.DROP_OFF
             )
         }
         set(value) = prefs.edit {
@@ -96,12 +116,14 @@ class RiderPreferences(context: Context) {
                 remove(KEY_DESTINATION_NAME)
                 remove(KEY_DESTINATION_LAT)
                 remove(KEY_DESTINATION_LON)
+                remove(KEY_DESTINATION_PURPOSE)
                 remove(LEGACY_KEY_DESTINATION_LAT)
                 remove(LEGACY_KEY_DESTINATION_LON)
             } else {
                 putInt(KEY_DESTINATION_ID, value.dockId)
                 putString(KEY_DESTINATION_NAME, value.name)
                 putPoint(KEY_DESTINATION_LAT, KEY_DESTINATION_LON, value.position)
+                putString(KEY_DESTINATION_PURPOSE, value.purpose.name)
                 // The float pair is what pre-1.3 builds read; clear it so a downgrade does not
                 // resurrect a stale pin.
                 remove(LEGACY_KEY_DESTINATION_LAT)
@@ -152,18 +174,20 @@ class RiderPreferences(context: Context) {
         }
 
     private companion object {
-        const val KEY_MODE = "mode"
+        const val KEY_SORT = "sort_by"
         const val KEY_FAVOURITES = "favourites"
         const val KEY_DESTINATION_ID = "destination_id"
         const val KEY_DESTINATION_NAME = "destination_name"
         const val KEY_DESTINATION_LAT = "destination_lat_bits"
         const val KEY_DESTINATION_LON = "destination_lon_bits"
+        const val KEY_DESTINATION_PURPOSE = "destination_purpose"
         const val KEY_UPDATED_AT = "updated_at"
         const val KEY_LAT = "last_lat_bits"
         const val KEY_LON = "last_lon_bits"
 
         const val LEGACY_KEY_DESTINATION_LAT = "destination_lat"
         const val LEGACY_KEY_DESTINATION_LON = "destination_lon"
+        const val LEGACY_KEY_MODE = "mode"
         const val LEGACY_KEY_LAT = "last_lat"
         const val LEGACY_KEY_LON = "last_lon"
     }

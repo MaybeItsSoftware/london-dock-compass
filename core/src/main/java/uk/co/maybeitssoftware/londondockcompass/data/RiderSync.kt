@@ -14,14 +14,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import uk.co.maybeitssoftware.londondockcompass.domain.Destination
 import uk.co.maybeitssoftware.londondockcompass.domain.GeoPoint
+import uk.co.maybeitssoftware.londondockcompass.domain.Purpose
 
 /**
  * The parts of a rider's setup that should follow them between devices.
  *
- * Saved docks and the pinned destination, and nothing else. Ride mode is deliberately excluded: it
- * answers "what am I doing in the next ten minutes", which is a property of the device in your hand
- * rather than of you — checking spaces on the phone should not flip the watch out of bike mode
- * while you are still looking for a bike.
+ * Saved docks and the pinned destination, and nothing else. The phone's sort order is deliberately
+ * excluded: it answers "what am I doing in the next ten minutes", which is a property of the device
+ * in your hand rather than of you.
  */
 data class RiderState(
     val favourites: Set<Int>,
@@ -80,6 +80,9 @@ class RiderSync(context: Context) {
         private const val KEY_DESTINATION_NAME = "destination_name"
         private const val KEY_DESTINATION_LAT = "destination_lat"
         private const val KEY_DESTINATION_LON = "destination_lon"
+
+        /** Absent from older builds, so missing reads as a drop-off — what every pin was then. */
+        private const val KEY_DESTINATION_PURPOSE = "destination_purpose"
         private const val KEY_UPDATED_AT = "updated_at"
 
         private fun DataMap.write(state: RiderState) {
@@ -89,11 +92,13 @@ class RiderSync(context: Context) {
             if (destination == null) {
                 putInt(KEY_DESTINATION_ID, -1)
                 remove(KEY_DESTINATION_NAME)
+                remove(KEY_DESTINATION_PURPOSE)
             } else {
                 putInt(KEY_DESTINATION_ID, destination.dockId)
                 putString(KEY_DESTINATION_NAME, destination.name)
                 putDouble(KEY_DESTINATION_LAT, destination.position.lat)
                 putDouble(KEY_DESTINATION_LON, destination.position.lon)
+                putString(KEY_DESTINATION_PURPOSE, destination.purpose.name)
             }
         }
 
@@ -107,7 +112,10 @@ class RiderSync(context: Context) {
                     position = GeoPoint(
                         getDouble(KEY_DESTINATION_LAT, 0.0),
                         getDouble(KEY_DESTINATION_LON, 0.0)
-                    )
+                    ),
+                    purpose = Purpose.entries.firstOrNull {
+                        it.name == getString(KEY_DESTINATION_PURPOSE)
+                    } ?: Purpose.DROP_OFF
                 ),
                 updatedAtMillis = getLong(KEY_UPDATED_AT, 0L)
             )

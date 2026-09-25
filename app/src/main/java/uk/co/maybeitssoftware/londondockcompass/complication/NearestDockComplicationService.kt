@@ -17,61 +17,67 @@ import androidx.wear.watchface.complications.datasource.SuspendingComplicationDa
 import androidx.core.graphics.drawable.IconCompat
 import uk.co.maybeitssoftware.londondockcompass.R
 import uk.co.maybeitssoftware.londondockcompass.data.DockRepository
-import uk.co.maybeitssoftware.londondockcompass.data.RiderPreferences
 import uk.co.maybeitssoftware.londondockcompass.data.riderPosition
 import uk.co.maybeitssoftware.londondockcompass.domain.RankedDock
 import uk.co.maybeitssoftware.londondockcompass.domain.formatDistance
-import uk.co.maybeitssoftware.londondockcompass.domain.RideMode
-import uk.co.maybeitssoftware.londondockcompass.domain.rankDocks
+import uk.co.maybeitssoftware.londondockcompass.domain.Availability
+import uk.co.maybeitssoftware.londondockcompass.domain.nearestDocks
 
 /**
  * The nearest usable dock, on the watch face.
  *
  * This is the surface that earns the app its place: a glance at the time also answers "is there a
- * bike near me", with no launching, no swiping and no waiting for a fix. It respects the mode set
- * in the app, so a rider looking for a space sees spaces.
+ * bike near me", with no launching, no swiping and no waiting for a fix.
+ *
+ * The small slots have room for one figure, and it is bikes: from a watch face the question is
+ * nearly always whether you can start a ride. The long slot, which has the room, carries all three.
  */
 class NearestDockComplicationService : SuspendingComplicationDataSourceService() {
 
     override fun getPreviewData(type: ComplicationType): ComplicationData? =
-        render(type, mode = RideMode.HIRE, count = 12, distanceMetres = 140, name = "Craven Street, Strand")
+        render(
+            type,
+            availability = Availability(12, 3, 9, 7, 20, 0L),
+            distanceMetres = 140,
+            name = "Craven Street, Strand"
+        )
 
     override suspend fun onComplicationRequest(request: ComplicationRequest): ComplicationData? {
-        val mode = RiderPreferences(this).mode
-        val nearest = nearestDock(mode)
-            ?: return render(request.complicationType, mode, count = null, distanceMetres = null, name = null)
+        val nearest = nearestDock()
+            ?: return render(request.complicationType, availability = null, distanceMetres = null, name = null)
 
         return render(
             type = request.complicationType,
-            mode = mode,
-            count = nearest.count,
+            availability = nearest.dock.availability,
             distanceMetres = nearest.distanceMetres,
-            name = nearest.name,
-            capacity = nearest.dock.availability?.totalDocks
+            name = nearest.name
         )
     }
 
-    private suspend fun nearestDock(mode: RideMode): RankedDock? {
+    /** The nearest dock with a bike in it, falling back to the nearest one at all. */
+    private suspend fun nearestDock(): RankedDock? {
         val here = riderPosition(this) ?: return null
         val snapshot = DockRepository(this).docksNear(here)
-        val ranked = rankDocks(here, snapshot.docks, mode)
-        // The nearest dock that can actually help, falling back to the nearest one at all.
-        return ranked.firstOrNull { it.isUsable } ?: ranked.firstOrNull()
+        val ranked = nearestDocks(here, snapshot.docks)
+        return ranked.firstOrNull { (it.dock.availability?.bikes ?: 1) > 0 } ?: ranked.firstOrNull()
     }
 
     private fun render(
         type: ComplicationType,
-        mode: RideMode,
-        count: Int?,
+        availability: Availability?,
         distanceMetres: Int?,
-        name: String?,
-        capacity: Int? = null
+        name: String?
     ): ComplicationData? {
+        val count = availability?.bikes
+        val capacity = availability?.totalDocks
         val countText = count?.toString() ?: "–"
         val distanceText = distanceMetres?.let { formatDistance(it) } ?: "?"
+        val allThree = availability?.let {
+            "${it.bikes} bikes · ${it.eBikes} e · ${it.emptyDocks} spaces"
+        }
         val spoken = when {
-            count == null || name == null -> "Dock availability unavailable"
-            else -> "${mode.describe(count)} at $name, $distanceText away"
+            availability == null || name == null -> "Dock availability unavailable"
+            else -> "${availability.describeAll()} at $name, $distanceText away"
         }
 
         return when (type) {
@@ -85,10 +91,10 @@ class NearestDockComplicationService : SuspendingComplicationDataSourceService()
                 .build()
 
             ComplicationType.LONG_TEXT -> LongTextComplicationData.Builder(
-                text = plain("${mode.describe(count ?: 0)} · $distanceText"),
+                text = plain("${allThree ?: "No live data"} · $distanceText"),
                 contentDescription = plain(spoken)
             )
-                .setTitle(plain(name ?: mode.label))
+                .setTitle(plain(name ?: "Nearest dock"))
                 .setMonochromaticImage(icon())
                 .setTapAction(openApp())
                 .build()

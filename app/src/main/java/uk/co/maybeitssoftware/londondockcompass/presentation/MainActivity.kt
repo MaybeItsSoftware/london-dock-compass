@@ -230,7 +230,7 @@ fun LondonDockCompassApp(compass: CompassSensor, isAmbient: Boolean) {
 
     LocationUpdates { location ->
         val point = GeoPoint(location.latitude, location.longitude)
-        viewModel.onPosition(point)
+        viewModel.onPosition(point, if (location.hasAccuracy()) location.accuracy else null)
         compass.onPosition(point)
         if (location.hasSpeed() && location.speed > MOVING_SPEED_MPS) {
             lastMovedAt = SystemClock.elapsedRealtime()
@@ -246,6 +246,8 @@ fun LondonDockCompassApp(compass: CompassSensor, isAmbient: Boolean) {
     }
 
     // Escalating trouble at the pinned destination is the one thing allowed to interrupt a ride.
+    // The screen stays on for as long as something is pinned, and ambient keeps polling it, so
+    // this is heard for the whole trip.
     var lastHealth by remember { mutableStateOf(state.destination?.health) }
     LaunchedEffect(state.destination?.health) {
         val health = state.destination?.health
@@ -262,9 +264,9 @@ fun LondonDockCompassApp(compass: CompassSensor, isAmbient: Boolean) {
         heading = heading,
         accuracy = compass.accuracy.value,
         isAmbient = isAmbient,
-        onCycleMode = { haptics.confirm(); viewModel.cycleMode() },
         onToggleFavourite = { haptics.confirm(); viewModel.toggleFavourite(it) },
-        onPinDestination = { haptics.confirm(); viewModel.pinDestination(it) },
+        onPinDestination = { dock, purpose -> haptics.confirm(); viewModel.pinDestination(dock, purpose) },
+        onSwitchToAlternative = { haptics.confirm(); viewModel.switchToAlternative() },
         onClearDestination = { haptics.confirm(); viewModel.clearDestination() },
         onTargetChanged = { target = it }
     )

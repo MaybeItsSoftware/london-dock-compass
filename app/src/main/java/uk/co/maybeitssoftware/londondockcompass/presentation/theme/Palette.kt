@@ -27,7 +27,6 @@ object Palette {
     val Ink = Color(Brand.INK)
     val Surface = Color(Brand.SURFACE)
     val Scrim = Color(Brand.SCRIM)
-    val Well = Color(Brand.WELL)
 }
 
 /**

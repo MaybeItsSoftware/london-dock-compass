@@ -65,4 +65,49 @@ class DestinationTest {
     fun `losing live data is not treated as trouble`() {
         assertFalse(shouldAlert(DestinationHealth.FINE, DestinationHealth.UNKNOWN))
     }
+
+    private fun stocked(id: Int, metresNorth: Double, bikes: Int, spaces: Int, inService: Boolean = true) = Dock(
+        id = id,
+        name = "Dock $id",
+        position = GeoPoint(51.5 + metresNorth / 111_320.0, -0.1),
+        inService = inService,
+        availability = Availability(bikes, 0, bikes, spaces, bikes + spaces, 0L)
+    )
+
+    @Test
+    fun `a pick-up watches bikes and a drop-off watches spaces`() {
+        val availability = Availability(bikes = 0, eBikes = 0, standardBikes = 0, emptyDocks = 20, totalDocks = 20, observedAtMillis = 0L)
+        assertEquals(0, Purpose.PICK_UP.countIn(availability))
+        assertEquals(20, Purpose.DROP_OFF.countIn(availability))
+    }
+
+    @Test
+    fun `parking diverts to the dock nearest where you were going`() {
+        val destination = Destination(1, "Full", GeoPoint(51.5, -0.1), Purpose.DROP_OFF)
+        val nearDestination = stocked(2, 150.0, bikes = 0, spaces = 8)
+        val nearRider = stocked(3, 900.0, bikes = 0, spaces = 8)
+        val rider = GeoPoint(51.5 + 1000 / 111_320.0, -0.1)
+
+        assertEquals(2, suggestAlternative(destination, listOf(nearRider, nearDestination), rider)?.id)
+    }
+
+    @Test
+    fun `picking up diverts to the dock nearest you, since you are walking`() {
+        val destination = Destination(1, "Empty", GeoPoint(51.5, -0.1), Purpose.PICK_UP)
+        val nearDestination = stocked(2, 150.0, bikes = 8, spaces = 0)
+        val nearRider = stocked(3, 900.0, bikes = 8, spaces = 0)
+        val rider = GeoPoint(51.5 + 1000 / 111_320.0, -0.1)
+
+        assertEquals(3, suggestAlternative(destination, listOf(nearDestination, nearRider), rider)?.id)
+    }
+
+    @Test
+    fun `never divert to a dock about to fail the same way, or a locked one`() {
+        val destination = Destination(1, "Full", GeoPoint(51.5, -0.1), Purpose.DROP_OFF)
+        val almostFull = stocked(2, 50.0, bikes = 10, spaces = 1)
+        val locked = stocked(3, 60.0, bikes = 0, spaces = 10, inService = false)
+        val itself = stocked(1, 0.0, bikes = 0, spaces = 10)
+
+        assertEquals(null, suggestAlternative(destination, listOf(almostFull, locked, itself), null))
+    }
 }

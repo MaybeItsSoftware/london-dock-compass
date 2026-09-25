@@ -155,15 +155,22 @@ private fun DockFinderApp() {
         }
     }
 
-    LocationUpdates { location ->
-        viewModel.onPosition(GeoPoint(location.latitude, location.longitude))
+    // Precise only while something is pinned: arriving is judged at forty metres, and balanced
+    // accuracy on a phone is often worse than that.
+    LocationUpdates(precise = state.destination != null) { location ->
+        viewModel.onPosition(
+            GeoPoint(location.latitude, location.longitude),
+            if (location.hasAccuracy()) location.accuracy else null
+        )
     }
 
     DockListScreen(
         state = state,
-        onSelectMode = viewModel::setMode,
+        onSelectSort = viewModel::setSort,
+        onQueryChanged = viewModel::onQueryChanged,
         onToggleFavourite = viewModel::toggleFavourite,
         onPinDestination = viewModel::pinDestination,
+        onSwitchToAlternative = viewModel::switchToAlternative,
         onClearDestination = viewModel::clearDestination
     )
 }
@@ -194,10 +201,11 @@ private fun PermissionPanel(onRequest: () -> Unit, onOpenSettings: () -> Unit) {
  * Streams fixes while the app is in front.
  *
  * Balanced power rather than high accuracy: this list is ordered by distance to docks hundreds of
- * metres apart, and a phone in a pocket has no reason to run the GPS hard for that.
+ * metres apart, and a phone in a pocket has no reason to run the GPS hard for that. The exception
+ * is a pinned dock, whose arrival has to be judged to within forty metres.
  */
 @Composable
-private fun LocationUpdates(onLocation: (android.location.Location) -> Unit) {
+private fun LocationUpdates(precise: Boolean, onLocation: (android.location.Location) -> Unit) {
     val context = LocalContext.current
     val client = remember { LocationServices.getFusedLocationProviderClient(context) }
     val callback = remember {
@@ -208,7 +216,7 @@ private fun LocationUpdates(onLocation: (android.location.Location) -> Unit) {
         }
     }
 
-    DisposableEffect(Unit) {
+    DisposableEffect(precise) {
         // Spelled out rather than routed through locationAccess(), because lint's permission
         // analysis follows checkSelfPermission calls and not helper functions — and a suppression
         // would throw away a check worth keeping.
@@ -222,10 +230,17 @@ private fun LocationUpdates(onLocation: (android.location.Location) -> Unit) {
 
         client.lastLocation.addOnSuccessListener { it?.let(onLocation) }
 
-        val request = LocationRequest.Builder(Priority.PRIORITY_BALANCED_POWER_ACCURACY, 15_000L)
-            .setMinUpdateIntervalMillis(10_000L)
-            .setMinUpdateDistanceMeters(25f)
-            .build()
+        val request = if (precise) {
+            LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 5_000L)
+                .setMinUpdateIntervalMillis(3_000L)
+                .setMinUpdateDistanceMeters(10f)
+                .build()
+        } else {
+            LocationRequest.Builder(Priority.PRIORITY_BALANCED_POWER_ACCURACY, 15_000L)
+                .setMinUpdateIntervalMillis(10_000L)
+                .setMinUpdateDistanceMeters(25f)
+                .build()
+        }
 
         client.requestLocationUpdates(request, callback, Looper.getMainLooper())
         onDispose { client.removeLocationUpdates(callback) }

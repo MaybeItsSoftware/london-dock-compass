@@ -24,9 +24,6 @@ object Brand {
     const val INK = 0xFF000000.toInt()
     const val SURFACE = 0xFF1C1A23.toInt()
 
-    /** A well: the mode chip, sunk a half-step below true black so its hairline reads. */
-    const val WELL = 0xFF15131A.toInt()
-
     /**
      * The backdrop behind the actions sheet.
      *

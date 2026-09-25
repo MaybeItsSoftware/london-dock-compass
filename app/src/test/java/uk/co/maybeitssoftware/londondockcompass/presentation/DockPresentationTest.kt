@@ -7,21 +7,23 @@ import uk.co.maybeitssoftware.londondockcompass.domain.formatDistance
 import uk.co.maybeitssoftware.londondockcompass.domain.Dock
 import uk.co.maybeitssoftware.londondockcompass.domain.GeoPoint
 import uk.co.maybeitssoftware.londondockcompass.domain.RankedDock
-import uk.co.maybeitssoftware.londondockcompass.domain.RideMode
 
 class DockPresentationTest {
 
-    private fun ranked(count: Int?, metres: Int = 140) = RankedDock(
+    private fun ranked(availability: Availability?, metres: Int = 140) = RankedDock(
         dock = Dock(
             id = 341,
             name = "Craven Street, Strand",
             position = GeoPoint(51.508103, -0.126021),
-            availability = count?.let { Availability(it, 2, it - 2, it, 23, 0L) }
+            availability = availability
         ),
         distanceMetres = metres,
         bearingDegrees = 0f,
-        count = count
+        count = null
     )
+
+    private fun counts(bikes: Int, eBikes: Int, spaces: Int) =
+        Availability(bikes, eBikes, bikes - eBikes, spaces, 23, 0L)
 
     @Test
     fun `metres up close, kilometres once precision stops mattering`() {
@@ -51,16 +53,16 @@ class DockPresentationTest {
     @Test
     fun `a screen reader gets the whole card, not just the arrow`() {
         assertEquals(
-            "Craven Street, Strand, 140m to your right, 19 bikes",
-            ranked(19).describe(RideMode.HIRE, relativeBearing = 90f)
+            "Craven Street, Strand, 140m to your right, 19 bikes, 2 e-bikes, 4 spaces",
+            ranked(counts(19, 2, 4)).describe(relativeBearing = 90f)
         )
     }
 
     @Test
-    fun `an exhausted dock says so out loud`() {
+    fun `single figures are spoken in the singular`() {
         assertEquals(
-            "Craven Street, Strand, 140m straight ahead, full",
-            ranked(0).describe(RideMode.PARK, relativeBearing = 0f)
+            "Craven Street, Strand, 140m straight ahead, 1 bike, 0 e-bikes, 1 space",
+            ranked(counts(1, 0, 1)).describe(relativeBearing = 0f)
         )
     }
 
@@ -68,7 +70,7 @@ class DockPresentationTest {
     fun `missing figures are announced as missing`() {
         assertEquals(
             "Craven Street, Strand, 140m behind you, availability unknown",
-            ranked(null).describe(RideMode.HIRE, relativeBearing = 180f)
+            ranked(null).describe(relativeBearing = 180f)
         )
     }
 }
