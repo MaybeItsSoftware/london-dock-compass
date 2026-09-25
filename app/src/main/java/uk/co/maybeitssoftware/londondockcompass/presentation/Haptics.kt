@@ -12,7 +12,7 @@ import uk.co.maybeitssoftware.londondockcompass.domain.ProximityBand
  *
  * You cannot read a watch at fifteen miles an hour in traffic, so every important event has a
  * pattern you can tell apart through a sleeve without looking: two taps for "nearly there", a long
- * settle for "you have arrived", and an insistent triple for "your destination just filled up".
+ * settle for "you have arrived", and an insistent triple for "your destination is failing".
  */
 class Haptics(context: Context) {
 
@@ -28,10 +28,10 @@ class Haptics(context: Context) {
         ProximityBand.ARRIVED -> play(ARRIVED)
     }
 
-    /** The destination is filling up and diverting is about to get expensive. */
+    /** The destination is running out and going elsewhere is about to get expensive. */
     fun divert() = play(DIVERT)
 
-    /** Confirms a deliberate tap, so the mode chip is usable without watching it. */
+    /** Confirms a deliberate tap, so saving or pinning registers without watching. */
     fun confirm() = play(CONFIRM)
 
     private fun play(pattern: LongArray) {

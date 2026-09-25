@@ -1,16 +1,16 @@
 Find the Santander Cycles dock you need with London Dock Compass for Wear OS and Android. Check bikes, e-bikes and empty docking spaces using availability from Transport for London's BikePoint service.
 
 ON YOUR WEAR OS WATCH
-Follow the compass arrow towards a nearby dock. Switch between bikes, e-bikes and spaces to prioritise docks that can help you. Save your favourite docks, pin a destination and get vibration alerts as you approach or when your destination is running out of spaces.
+Follow the compass arrow towards a nearby dock. Every dock shows bikes, e-bikes and spaces together, so there is nothing to switch while riding. Save your favourite docks and pin a dock to get a bike from or to park at. You get vibration alerts as you approach, and a warning if the pinned dock is running out of bikes or spaces, with the nearest dock to try instead. Arrive and leave, and the pin clears itself.
 
 WEAR OS TILE
-Add the Nearby docks Tile to see up to three nearby docks with availability counts and distances, one swipe from your watch face. Tap the Tile to open the compass.
+Add the Nearby docks Tile to see up to three nearby docks with bikes, e-bikes, spaces and distances, one swipe from your watch face. Tap the Tile to open the compass.
 
 WATCH FACE COMPLICATION
-Add the Nearest dock complication to a compatible watch face to see availability at the nearest suitable dock. It follows the mode selected in the watch app and supports short text, long text, ranged value and icon complication slots. The information shown depends on the slot type; text slots include distance. Complications refresh periodically, so open the app for the latest availability.
+Add the Nearest dock complication to a compatible watch face to see bikes at the nearest dock that has one, with bikes, e-bikes and spaces in the long text slot. It supports short text, long text, ranged value and icon complication slots. The information shown depends on the slot type; text slots include distance. Complications refresh periodically, so open the app for the latest availability.
 
 ON YOUR ANDROID PHONE
-Browse nearby docks and check availability before setting off. Save docks and pin a destination on either device, with saved docks and your destination shared between your phone and watch when connected.
+Browse nearby docks and check availability before setting off, sorted by distance or by docks with bikes, e-bikes or spaces first. Search every dock in London by name to pin a destination across town. Save docks and pin a destination on either device, with saved docks and your destination shared between your phone and watch when connected.
 
 The Wear OS app works independently without the phone app. Location permission helps find nearby docks, and an internet connection is needed for current availability. When offline, bundled dock locations remain available and missing availability is shown as unknown. Cached counts are labelled in the app.
 

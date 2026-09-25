@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Last Updated:** September 13, 2026
+**Last Updated:** September 25, 2026
 
 This Privacy Policy explains how **MaybeItsSoftware Ltd** ("we", "us", or "our"), a company registered in the United Kingdom, handles your information when you use **London Dock Compass** (the "App") on Wear OS watches and Android phones. MaybeItsSoftware Ltd is the data controller for any personal data described in this policy.
 
@@ -42,6 +42,7 @@ On Wear OS, the App reads the device's rotation vector sensor (which combines co
 Live bike, e-bike and space counts come from the TfL BikePoint API (`api.tfl.gov.uk`). Requests to TfL contain:
 
 * your current position and a search radius, to find nearby docks;
+* when a pinned dock is running out while the App is open, a search around that dock (or, when you are picking up a bike, around you) for somewhere else to go;
 * the IDs of docks you have saved or pinned, to refresh their counts; and
 * an application key that identifies the App, not you.
 
@@ -55,7 +56,7 @@ Recent results are reused for a short time instead of repeating a request. If a 
 
 The following data is stored on your device only:
 
-* **Preferences:** your chosen mode (bikes, e-bikes or spaces), saved docks, and pinned destination dock.
+* **Preferences:** how the phone list is sorted, saved docks, and the pinned destination dock with whether you are picking up a bike there or dropping one off.
 * **Dock cache:** the most recent availability results and the position they were fetched for, so the App works briefly offline. Excluded from backup and device transfer.
 * **Last known position:** as described in Section 2. Excluded from backup and device transfer.
 
@@ -67,7 +68,7 @@ You can delete all of this data at any time by clearing the App's storage or uni
 
 ## 6. Watch and Phone Sync
 
-If you use the App on both a paired phone and watch, your saved docks and pinned destination dock are synced between them using the Google Play services Wearable Data Layer. This contains dock IDs, dock names and dock positions, never your own position. The sync goes directly between your devices, or through Google's services when they are not connected nearby; it never passes through our servers.
+If you use the App on both a paired phone and watch, your saved docks and pinned destination dock are synced between them using the Google Play services Wearable Data Layer. This contains dock IDs, dock names, dock positions, and whether the pin is for picking up or dropping off a bike, never your own position. The sync goes directly between your devices, or through Google's services when they are not connected nearby; it never passes through our servers.
 
 ---
 

@@ -34,6 +34,9 @@ data class Availability(
         RideMode.EBIKE -> eBikes
         RideMode.PARK -> emptyDocks
     }
+
+    /** All three figures in words, for screen readers: "3 bikes, 1 e-bike, 4 spaces". */
+    fun describeAll(): String = RideMode.entries.joinToString(", ") { it.describe(countFor(it)) }
 }
 
 /** How stale a snapshot is allowed to get before we stop trusting it out loud. */

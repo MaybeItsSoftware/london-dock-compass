@@ -21,11 +21,9 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import uk.co.maybeitssoftware.londondockcompass.data.DockRepository
-import uk.co.maybeitssoftware.londondockcompass.data.RiderPreferences
 import uk.co.maybeitssoftware.londondockcompass.data.riderPosition
 import uk.co.maybeitssoftware.londondockcompass.domain.RankedDock
-import uk.co.maybeitssoftware.londondockcompass.domain.RideMode
-import uk.co.maybeitssoftware.londondockcompass.domain.rankDocks
+import uk.co.maybeitssoftware.londondockcompass.domain.nearestDocks
 import uk.co.maybeitssoftware.londondockcompass.theme.Brand
 
 /**
@@ -47,8 +45,7 @@ class NearbyDocksTileService : TileService() {
     override fun onTileRequest(
         requestParams: RequestBuilders.TileRequest
     ): ListenableFuture<TileBuilders.Tile> = future {
-        val mode = RiderPreferences(this).mode
-        val docks = nearbyDocks(mode)
+        val docks = nearbyDocks()
         val device = requestParams.deviceConfiguration
 
         TileBuilders.Tile.Builder()
@@ -56,7 +53,7 @@ class NearbyDocksTileService : TileService() {
             // The counts move constantly; a minute is as stale as this should ever get.
             .setFreshnessIntervalMillis(FRESHNESS_MILLIS)
             .setTileTimeline(
-                TimelineBuilders.Timeline.fromLayoutElement(layout(mode, docks, device))
+                TimelineBuilders.Timeline.fromLayoutElement(layout(docks, device))
             )
             .build()
     }
@@ -67,14 +64,13 @@ class NearbyDocksTileService : TileService() {
         ResourceBuilders.Resources.Builder().setVersion(RESOURCES_VERSION).build()
     }
 
-    private suspend fun nearbyDocks(mode: RideMode): List<RankedDock> {
+    private suspend fun nearbyDocks(): List<RankedDock> {
         val here = riderPosition(this) ?: return emptyList()
         val snapshot = DockRepository(this).docksNear(here)
-        return rankDocks(here, snapshot.docks, mode, limit = ROWS)
+        return nearestDocks(here, snapshot.docks, limit = ROWS)
     }
 
     private fun layout(
-        mode: RideMode,
         docks: List<RankedDock>,
         device: DeviceParameters
     ): LayoutElementBuilders.LayoutElement {
@@ -93,13 +89,14 @@ class NearbyDocksTileService : TileService() {
                     .build()
             )
         } else {
-            docks.take(ROWS).forEach { dock -> content.addContent(row(dock, mode)) }
+            docks.take(ROWS).forEach { dock -> content.addContent(row(dock)) }
         }
 
         return PrimaryLayout.Builder(device)
             .setResponsiveContentInsetEnabled(true)
+            // The key to the three figures on every row, in the order they appear.
             .setPrimaryLabelTextContent(
-                Text.Builder(this, mode.label)
+                Text.Builder(this, "BIKES · E · SPACES")
                     .setTypography(Typography.TYPOGRAPHY_CAPTION3)
                     .setColor(argb(Brand.RASPBERRY))
                     .build()
@@ -108,22 +105,22 @@ class NearbyDocksTileService : TileService() {
             .build()
     }
 
-    /** One dock: how many of the thing you want, how far, and which dock it is. */
-    private fun row(dock: RankedDock, mode: RideMode): LayoutElementBuilders.LayoutElement =
-        LayoutElementBuilders.Row.Builder()
+    /** One dock: bikes, e-bikes and spaces, then how far and which dock it is. */
+    private fun row(dock: RankedDock): LayoutElementBuilders.LayoutElement {
+        val availability = dock.dock.availability
+        val counts = listOf(availability?.bikes, availability?.eBikes, availability?.emptyDocks)
+        val row = LayoutElementBuilders.Row.Builder()
             .setWidth(androidx.wear.protolayout.DimensionBuilders.expand())
             .setVerticalAlignment(LayoutElementBuilders.VERTICAL_ALIGN_CENTER)
-            .addContent(
-                Text.Builder(this, dock.count?.toString() ?: "–")
-                    .setTypography(Typography.TYPOGRAPHY_TITLE3)
-                    .setColor(argb(Brand.availabilityColour(dock.count)))
+        counts.forEach { count ->
+            row.addContent(
+                Text.Builder(this, count?.toString() ?: "–")
+                    .setTypography(Typography.TYPOGRAPHY_BUTTON)
+                    .setColor(argb(Brand.availabilityColour(count)))
                     .build()
-            )
-            .addContent(
-                LayoutElementBuilders.Spacer.Builder()
-                    .setWidth(androidx.wear.protolayout.DimensionBuilders.dp(6f))
-                    .build()
-            )
+            ).addContent(gap())
+        }
+        return row
             .addContent(
                 Text.Builder(this, "${dock.distanceMetres}m  ${dock.name.shorten()}")
                     .setTypography(Typography.TYPOGRAPHY_CAPTION2)
@@ -131,6 +128,12 @@ class NearbyDocksTileService : TileService() {
                     .setMaxLines(1)
                     .build()
             )
+            .build()
+    }
+
+    private fun gap(): LayoutElementBuilders.Spacer =
+        LayoutElementBuilders.Spacer.Builder()
+            .setWidth(androidx.wear.protolayout.DimensionBuilders.dp(5f))
             .build()
 
     private fun openApp(): ModifiersBuilders.Clickable =
@@ -167,6 +170,6 @@ class NearbyDocksTileService : TileService() {
             "uk.co.maybeitssoftware.londondockcompass.presentation.MainActivity"
 
         /** Dock names are long and tiles are narrow; the street is the part that locates it. */
-        fun String.shorten(): String = substringBefore(',').take(18)
+        fun String.shorten(): String = substringBefore(',').trim().take(14)
     }
 }

@@ -10,25 +10,34 @@ that fits.
 
 ## What it does
 
-**Bikes, e-bikes or spaces — one tap apart.** A dock with nineteen bikes and no spaces is the best
+**Bikes, e-bikes and spaces, all at once.** A dock with nineteen bikes and no spaces is the best
 dock on the street if you need a bike, and the worst one on it if you are trying to end a journey.
-The mode chip at the top of the screen switches what "nearest" means: docks that can help come
-first, docks that cannot sink to the back of the deck marked EMPTY or FULL, and docks that are
-locked or uninstalled are dropped entirely.
+So every card, row and tile shows all three figures side by side, each coloured by how close it is
+to running out — there is no mode to remember to switch while riding. The watch deck is nearest
+first. The phone list can also be sorted to put docks with bikes, e-bikes or spaces first. Locked
+and uninstalled docks are dropped entirely.
 
-**A destination that watches itself.** Pin the dock you are riding to and it leads the deck, with
-its space count checked on every refresh. When it drops to the last couple your wrist buzzes; when
-it fills, it buzzes differently and turns raspberry — early enough that diverting is still cheap.
-Arriving to find a full dock is the defining frustration of London hire bikes, and it is the one
-thing this app exists to prevent.
+**A destination that watches itself, on foot or on a bike.** Pin a dock and say what it is for:
+*get a bike here* (on foot, so its bikes are watched) or *park here* (riding, so its spaces are).
+It leads the deck, and the watch keeps its screen on and keeps polling it — ambient included — for
+as long as it stays pinned. When the figure that matters drops to the last couple, or to nothing,
+your wrist buzzes and the card names somewhere else to go: for a drop-off, the nearest dock to
+your destination with spaces; for a pick-up, the nearest dock to *you* with bikes, because you are
+walking. One tap switches. Everything happens while the app is open; there is no background
+service. Arriving to find a full dock — or walking to an empty
+one — is the defining frustration of London hire bikes, and it is the thing this app exists to
+prevent.
+
+**Pins clean up after themselves.** Arrive at the pinned dock and then leave it with the app open,
+and the pin is removed on both devices, so yesterday's destination does not lead tomorrow's deck.
 
 **Alerts you can feel.** You cannot read a watch at fifteen miles an hour in traffic. Two taps at
 100m, a longer settle on arrival, an insistent triple if the destination fills up. Each fires once
 per crossing, with hysteresis, so a fix wobbling on a threshold does not buzz your wrist off.
 
-**Glanceable surfaces.** A tile lists the three nearest docks with live counts, one swipe from the
-watch face. The complication puts bikes-or-spaces and distance on the face itself, as short text,
-long text, a ranged arc, or an icon — because eleven bikes out of a rack of twelve reads very
+**Glanceable surfaces.** A tile lists the three nearest docks with bikes, e-bikes and spaces, one
+swipe from the watch face. The complication puts the nearest bikes and distance on the face itself
+(all three figures in the long-text slot), as short text, long text, a ranged arc, or an icon — because eleven bikes out of a rack of twelve reads very
 differently from eleven out of sixty.
 
 **Saved docks, the crown, and a screen reader.** Tap a card to save a dock or pin it as your
@@ -36,17 +45,20 @@ destination. Saved docks keep their place at the end of the deck with live count
 not just when you are standing next to one — which is how you check your home dock and pin it as
 the destination *before* setting off. The rotary crown pages the deck. Every card carries a spoken
 description with the direction given relative to the way you are facing — "140m ahead and to your
-right, 19 bikes" — because an absolute bearing is no use to anyone who cannot see the arrow.
+right, 19 bikes, 2 e-bikes, 4 spaces" — because an absolute bearing is no use to anyone who cannot see the arrow.
 
 **Honest when it is guessing.** Counts come with the time TfL observed them, and the app says
 CACHED, NO LIVE DATA or how many minutes old a figure is rather than presenting a stale number as a
 live one. With no network it falls back to the bundled dock coordinates and shows availability as
 unknown instead of as zero.
 
+**Find any dock, pin it from the phone.** The phone searches every dock in London by name — words
+in any order, nearest first — so a destination across town can be pinned before you set off.
+
 **The phone knows what the watch knows.** Save a dock or pin a destination on either device and it
-turns up on the other over the Wear Data Layer — so you can pin where you are riding *to* on the
-phone, at home, before you have touched a bike. Ride mode deliberately stays local: it answers
-"what am I doing in the next ten minutes", which belongs to the device in your hand.
+turns up on the other over the Wear Data Layer, including on a watch app that is already open — so
+you can search for where you are riding *to* on the phone, at home, before you have touched a bike.
+The phone's sort order deliberately stays local.
 
 ## Privacy
 
@@ -85,10 +97,12 @@ Three Gradle modules. `:app` is the Wear app — it keeps the bare name because 
 addresses it by path.
 
 ```
-core/    domain/    Pure Kotlin: geometry, ranking, ride modes, proximity bands, destination
-                    health. No Android imports, so it is all unit-testable on the JVM.
+core/    domain/    Pure Kotlin: geometry, ranking, search, proximity bands, destination
+                    health and alternatives, arrival. No Android imports, so it is all
+                    unit-testable on the JVM.
          data/      TflBikePointApi (radius query), DockRepository (live → cache → bundled),
-                    CachePolicy, SnapshotStore, RiderPreferences, RiderLocation, RiderSync
+                    CachePolicy, SnapshotStore, RiderPreferences, RiderLocation, RiderSync,
+                    DestinationWatcher
          theme/     Brand: every colour literal in the project, and the count-to-colour rule
 
 app/     presentation/  MainActivity, CompassViewModel, CompassScreen, CompassSensor, Haptics

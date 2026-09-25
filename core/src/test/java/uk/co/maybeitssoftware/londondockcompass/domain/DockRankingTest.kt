@@ -112,4 +112,15 @@ class DockRankingTest {
         )
         assertEquals(0, availability.countFor(RideMode.PARK))
     }
+
+    @Test
+    fun `nearest docks ignore availability and drop only what is out of service`() {
+        val empty = dockAt(1, 100.0, bikes = 0, eBikes = 0, emptyDocks = 0)
+        val locked = dockAt(2, 50.0, inService = false)
+        val stocked = dockAt(3, 300.0)
+        val ranked = nearestDocks(here, listOf(stocked, locked, empty))
+
+        assertEquals(listOf(1, 3), ranked.map { it.id })
+        assertNull(ranked.first().count)
+    }
 }

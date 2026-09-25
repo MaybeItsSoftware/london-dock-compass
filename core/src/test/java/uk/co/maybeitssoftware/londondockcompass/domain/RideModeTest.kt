@@ -6,13 +6,6 @@ import org.junit.Test
 class RideModeTest {
 
     @Test
-    fun `tapping the chip walks the whole ring and comes back`() {
-        var mode = RideMode.HIRE
-        repeat(RideMode.entries.size) { mode = mode.next() }
-        assertEquals(RideMode.HIRE, mode)
-    }
-
-    @Test
     fun `counts are described in the rider's terms`() {
         assertEquals("3 bikes", RideMode.HIRE.describe(3))
         assertEquals("1 bike", RideMode.HIRE.describe(1))
@@ -22,10 +15,11 @@ class RideModeTest {
     }
 
     @Test
-    fun `a dock with none left reads differently depending on what you wanted`() {
-        assertEquals("EMPTY", RideMode.HIRE.exhaustedLabel)
-        assertEquals("EMPTY", RideMode.EBIKE.exhaustedLabel)
-        assertEquals("FULL", RideMode.PARK.exhaustedLabel)
+    fun `all three figures read out together`() {
+        assertEquals(
+            "19 bikes, 1 e-bike, 0 spaces",
+            Availability(19, 1, 18, 0, 23, 0L).describeAll()
+        )
     }
 
     @Test

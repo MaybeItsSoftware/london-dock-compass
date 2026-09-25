@@ -21,26 +21,28 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import uk.co.maybeitssoftware.londondockcompass.core.R
+import uk.co.maybeitssoftware.londondockcompass.data.DestinationWatcher
 import uk.co.maybeitssoftware.londondockcompass.data.DockRepository
 import uk.co.maybeitssoftware.londondockcompass.data.DockSnapshot
 import uk.co.maybeitssoftware.londondockcompass.data.DockSource
 import uk.co.maybeitssoftware.londondockcompass.data.RiderPreferences
+import uk.co.maybeitssoftware.londondockcompass.data.RiderSync
 import uk.co.maybeitssoftware.londondockcompass.data.TflBikePointApi
+import uk.co.maybeitssoftware.londondockcompass.domain.ArrivalTracker
 import uk.co.maybeitssoftware.londondockcompass.domain.Destination
 import uk.co.maybeitssoftware.londondockcompass.domain.DestinationHealth
 import uk.co.maybeitssoftware.londondockcompass.domain.Dock
 import uk.co.maybeitssoftware.londondockcompass.domain.GeoPoint
+import uk.co.maybeitssoftware.londondockcompass.domain.Purpose
 import uk.co.maybeitssoftware.londondockcompass.domain.RankedDock
-import uk.co.maybeitssoftware.londondockcompass.domain.RideMode
 import uk.co.maybeitssoftware.londondockcompass.domain.bearingTo
 import uk.co.maybeitssoftware.londondockcompass.domain.destinationHealth
 import uk.co.maybeitssoftware.londondockcompass.domain.distanceTo
-import uk.co.maybeitssoftware.londondockcompass.domain.rankDocks
+import uk.co.maybeitssoftware.londondockcompass.domain.nearestDocks
 import kotlin.math.roundToInt
 
 /** Everything the screen needs, recomputed whenever the rider or the docks move. */
 data class CompassUiState(
-    val mode: RideMode = RideMode.HIRE,
     val docks: List<RankedDock> = emptyList(),
     /**
      * Saved docks that are not already in [docks] — the ones you are heading towards rather than
@@ -89,11 +91,17 @@ enum class Attention {
 data class DestinationState(
     val destination: Destination,
     val ranked: RankedDock?,
-    val health: DestinationHealth
+    val health: DestinationHealth,
+    /** Where to go instead, once the destination starts to fail. */
+    val alternative: RankedDock? = null
 )
 
 /**
  * Holds the rider's position, the dock snapshot and the two preferences that reorder everything.
+ *
+ * There is no ride mode here. The watch used to show one count at a time behind a chip you tapped
+ * round a ring; every card now carries bikes, e-bikes and spaces together, so the deck is simply
+ * nearest first.
  *
  * Kept in a ViewModel so a wrist-flick rotation or an ambient-mode round trip does not restart the
  * polling loop or lose a pinned destination.
@@ -102,16 +110,20 @@ class CompassViewModel(app: Application) : AndroidViewModel(app) {
 
     private val repository = DockRepository(app)
     private val prefs = RiderPreferences(app)
+    private val sync = RiderSync(app)
     private val api = TflBikePointApi(app.getString(R.string.tfl_app_key))
+    private val watcher = DestinationWatcher(api)
+    private val arrivals = ArrivalTracker()
 
     private val _state = MutableStateFlow(
-        CompassUiState(mode = prefs.mode, favourites = prefs.favourites)
+        CompassUiState(favourites = prefs.favourites)
     )
     val state: StateFlow<CompassUiState> = _state.asStateFlow()
 
     private var position: GeoPoint? = prefs.lastKnownPosition
     private var snapshot: DockSnapshot = DockSnapshot.EMPTY
     private var destinationDock: Dock? = null
+    private var alternativeDock: Dock? = null
 
     /**
      * The two preferences that reorder the deck, held in memory and written through on change.
@@ -155,6 +167,12 @@ class CompassViewModel(app: Application) : AndroidViewModel(app) {
             _state.update { it.copy(destination = DestinationState(pinned, null, DestinationHealth.UNKNOWN)) }
         }
         viewModelScope.launch { refreshRequests.collect { runRefresh() } }
+        // A dock pinned or saved on the phone lands in these preferences via the listener service,
+        // in this same process. Without collecting it here the running deck would not see it until
+        // the next time the app was killed and reopened.
+        viewModelScope.launch { prefs.changes.collect { adoptPreferences() } }
+        // Cold start: the phone may have published while this app was not running.
+        viewModelScope.launch { sync.pull()?.let { if (prefs.merge(it)) adoptPreferences() } }
         viewModelScope.launch {
             val hasDestination = _state
                 .map { it.destination != null }
@@ -187,13 +205,18 @@ class CompassViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** A new fix. Cheap to call at GPS rate — only the ranking runs, not a network request. */
-    fun onPosition(point: GeoPoint) {
+    fun onPosition(point: GeoPoint, accuracyMetres: Float? = null) {
         // The seed position from the last session does not count as a fix: the first real one has
         // to be allowed to correct whatever it was we opened with.
         val previous = position.takeIf { hasRealFix }
         hasRealFix = true
         position = point
         rememberPosition(point)
+        // Arriving at the pinned dock and then leaving it ends the trip, so the pin goes with it.
+        destination?.let { pinned ->
+            val metres = point.distanceTo(pinned.position).roundToInt()
+            if (arrivals.update(pinned.dockId, metres, accuracyMetres)) clearDestination()
+        }
         recompute()
         // Riding out of the swept radius is the other thing that justifies an off-schedule fetch.
         if (previous == null || previous.distanceTo(point) > REFETCH_AFTER_METRES) refresh()
@@ -213,11 +236,41 @@ class CompassViewModel(app: Application) : AndroidViewModel(app) {
         prefs.lastKnownPosition = point
     }
 
-    fun cycleMode() {
-        val next = _state.value.mode.next()
-        prefs.mode = next
-        _state.update { it.copy(mode = next) }
+    /**
+     * Picks up saved docks and the destination after something other than this ViewModel wrote
+     * them — the phone, via sync. Our own writes come back through here too, which is harmless: the
+     * values already match and nothing is refetched.
+     */
+    private fun adoptPreferences() {
+        val newFavourites = prefs.favourites
+        val newDestination = prefs.destination
+        if (newFavourites == favourites && newDestination == destination) return
+
+        val destinationMoved = newDestination?.dockId != destination?.dockId
+        favourites = newFavourites
+        destination = newDestination
+        if (destinationMoved) {
+            destinationDock = null
+            alternativeDock = null
+        }
+        savedDocks.keys.retainAll(favourites)
+        _state.update {
+            it.copy(
+                favourites = favourites,
+                destination = newDestination?.let { pinned ->
+                    DestinationState(pinned, null, DestinationHealth.UNKNOWN)
+                }
+            )
+        }
         recompute()
+        // A newly synced dock should show a count now, not at the next slow sweep.
+        savedDocksRefreshedAt = 0L
+        refresh()
+    }
+
+    /** Sends saved docks and the destination to the phone. */
+    private fun publish() {
+        viewModelScope.launch { sync.push(prefs.snapshot()) }
     }
 
     fun toggleFavourite(dockId: Int) {
@@ -225,20 +278,36 @@ class CompassViewModel(app: Application) : AndroidViewModel(app) {
         favourites = prefs.favourites
         if (dockId !in favourites) savedDocks.remove(dockId)
         _state.update { it.copy(favourites = favourites) }
+        publish()
         recompute()
         // A deliberate save should show a count now, not at the next slow saved-dock sweep.
         savedDocksRefreshedAt = 0L
         refresh()
     }
 
-    fun pinDestination(dock: RankedDock) {
-        val pinned = Destination(dock.id, dock.name, dock.dock.position)
+    fun pinDestination(dock: RankedDock, purpose: Purpose) {
+        pin(Destination(dock.id, dock.name, dock.dock.position, purpose), dock.dock)
+    }
+
+    /** Takes the suggested alternative, for the same purpose as the pin it replaces. */
+    fun switchToAlternative() {
+        val current = destination ?: return
+        val alternative = alternativeDock ?: return
+        pin(
+            Destination(alternative.id, alternative.name, alternative.position, current.purpose),
+            alternative
+        )
+    }
+
+    private fun pin(pinned: Destination, dock: Dock) {
         prefs.destination = pinned
         destination = pinned
-        destinationDock = dock.dock
+        destinationDock = dock
+        alternativeDock = null
         _state.update {
             it.copy(destination = DestinationState(pinned, null, DestinationHealth.UNKNOWN))
         }
+        publish()
         recompute()
         refresh()
     }
@@ -247,8 +316,11 @@ class CompassViewModel(app: Application) : AndroidViewModel(app) {
         prefs.destination = null
         destination = null
         destinationDock = null
+        alternativeDock = null
         _state.update { it.copy(destination = null) }
+        publish()
     }
+
 
     fun refresh() {
         refreshRequests.tryEmit(Unit)
@@ -271,16 +343,16 @@ class CompassViewModel(app: Application) : AndroidViewModel(app) {
 
     /**
      * A pinned destination is usually outside the radius we sweep around the rider, so it needs a
-     * request of its own — unless the sweep happened to cover it, in which case we already have it.
+     * request of its own — unless the sweep happened to cover it. Once it starts to fail, the
+     * watcher also finds somewhere to go instead.
      */
     private suspend fun refreshDestinationDock() {
         val pinned = destination ?: return
-        val fromSnapshot = snapshot.docks.firstOrNull { it.id == pinned.dockId }
-        destinationDock = fromSnapshot
-            ?: runCatching { api.dock(pinned.dockId) }
-                .onFailure { Log.w(TAG, "Destination refresh failed", it) }
-                .getOrNull()
-            ?: destinationDock
+        val report = watcher.check(pinned, position, snapshot.docks, known = destinationDock)
+        // The pin may have changed while the request was out.
+        if (destination != pinned) return
+        destinationDock = report.dock
+        alternativeDock = report.alternative
     }
 
     /**
@@ -314,31 +386,40 @@ class CompassViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun recompute() {
         val here = position
-        val mode = _state.value.mode
         if (here == null) {
             _state.update { it.copy(hasPosition = false) }
             return
         }
 
-        fun rank(dock: Dock) = RankedDock(
+        // count stays null on the deck: cards read all three figures off the availability. The
+        // destination is the exception — it is judged on the one figure its purpose depends on,
+        // bikes for a pick-up and spaces for a drop-off, and its health follows that.
+        fun rank(dock: Dock, count: Int? = null) = RankedDock(
             dock = dock,
             distanceMetres = here.distanceTo(dock.position).roundToInt(),
             bearingDegrees = here.bearingTo(dock.position),
-            count = dock.availability?.countFor(mode)
+            count = count
         )
 
-        val ranked = rankDocks(here, snapshot.docks, mode)
+        val ranked = nearestDocks(here, snapshot.docks)
         val pinned = destination
         val destinationState = pinned?.let {
-            val rankedDestination = destinationDock?.let(::rank)
-            DestinationState(it, rankedDestination, destinationHealth(rankedDestination))
+            val rankedDestination = destinationDock?.let { dock ->
+                rank(dock, count = dock.availability?.let(it.purpose::countIn))
+            }
+            DestinationState(
+                destination = it,
+                ranked = rankedDestination,
+                health = destinationHealth(rankedDestination),
+                alternative = alternativeDock?.let { dock -> rank(dock) }
+            )
         }
 
         // Saved docks already in the deck are left there; only the far-off ones need a page.
         val nearbyIds = ranked.map { it.id }.toSet()
         val saved = savedDocks.values
             .filter { it.id !in nearbyIds && it.id != pinned?.dockId }
-            .map(::rank)
+            .map { rank(it) }
             .sortedBy { it.distanceMetres }
 
         _state.update {

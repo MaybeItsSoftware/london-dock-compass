@@ -2,23 +2,21 @@ package uk.co.maybeitssoftware.londondockcompass.presentation
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -54,9 +52,10 @@ import androidx.wear.compose.material.Text
 import kotlinx.coroutines.launch
 import uk.co.maybeitssoftware.londondockcompass.R
 import uk.co.maybeitssoftware.londondockcompass.data.DockSource
+import uk.co.maybeitssoftware.londondockcompass.domain.Availability
 import uk.co.maybeitssoftware.londondockcompass.domain.DestinationHealth
+import uk.co.maybeitssoftware.londondockcompass.domain.Purpose
 import uk.co.maybeitssoftware.londondockcompass.domain.RankedDock
-import uk.co.maybeitssoftware.londondockcompass.domain.RideMode
 import uk.co.maybeitssoftware.londondockcompass.domain.formatDistance
 import uk.co.maybeitssoftware.londondockcompass.domain.isStaleAt
 import uk.co.maybeitssoftware.londondockcompass.domain.normaliseDegrees
@@ -100,9 +99,9 @@ fun CompassScreen(
     heading: () -> Float,
     accuracy: CompassAccuracy,
     isAmbient: Boolean,
-    onCycleMode: () -> Unit,
     onToggleFavourite: (Int) -> Unit,
-    onPinDestination: (RankedDock) -> Unit,
+    onPinDestination: (RankedDock, Purpose) -> Unit,
+    onSwitchToAlternative: () -> Unit,
     onClearDestination: () -> Unit,
     onTargetChanged: (RankedDock?) -> Unit
 ) {
@@ -125,7 +124,7 @@ fun CompassScreen(
     }
     if (pages.isEmpty()) {
         LaunchedEffect(Unit) { onTargetChanged(null) }
-        StatusScreen(state.mode.emptyMessage, showSpinnerHint = state.isRefreshing)
+        StatusScreen("No docks nearby", showSpinnerHint = state.isRefreshing)
         return
     }
 
@@ -153,7 +152,6 @@ fun CompassScreen(
             when (val page = pages.getOrNull(index) ?: return@HorizontalPager) {
                 is Page.Pinned -> PinnedPage(
                     state = page.state,
-                    mode = state.mode,
                     heading = heading,
                     isAmbient = isAmbient,
                     onOpenActions = { showActions = true }
@@ -161,7 +159,6 @@ fun CompassScreen(
 
                 is Page.Nearby -> DockPage(
                     dock = page.ranked,
-                    mode = state.mode,
                     heading = heading,
                     isFavourite = page.ranked.id in state.favourites,
                     isAmbient = isAmbient,
@@ -170,7 +167,6 @@ fun CompassScreen(
 
                 is Page.Saved -> DockCard(
                     dock = page.ranked,
-                    mode = state.mode,
                     heading = heading,
                     isAmbient = isAmbient,
                     eyebrow = "★ SAVED",
@@ -181,14 +177,6 @@ fun CompassScreen(
         }
 
         if (!isAmbient) {
-            ModeChip(
-                mode = state.mode,
-                onClick = onCycleMode,
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = 2.dp)
-            )
-
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier
@@ -211,12 +199,16 @@ fun CompassScreen(
 
         if (showActions) {
             current?.ranked?.let { target ->
+                val pinnedState = state.destination
+                val onPinnedPage = current is Page.Pinned
                 DockActions(
                     dock = target,
                     isFavourite = target.id in state.favourites,
-                    isDestination = state.destination?.destination?.dockId == target.id,
+                    isDestination = pinnedState?.destination?.dockId == target.id,
+                    alternative = pinnedState?.alternative?.takeIf { onPinnedPage },
+                    onSwitch = { onSwitchToAlternative(); showActions = false },
                     onFavourite = { onToggleFavourite(target.id); showActions = false },
-                    onPin = { onPinDestination(target); showActions = false },
+                    onPin = { purpose -> onPinDestination(target, purpose); showActions = false },
                     onUnpin = { onClearDestination(); showActions = false },
                     onDismiss = { showActions = false }
                 )
@@ -279,7 +271,6 @@ private fun PagerState.asIndicatorState(): PageIndicatorState {
 @Composable
 private fun DockPage(
     dock: RankedDock,
-    mode: RideMode,
     heading: () -> Float,
     isFavourite: Boolean,
     isAmbient: Boolean,
@@ -287,7 +278,6 @@ private fun DockPage(
 ) {
     DockCard(
         dock = dock,
-        mode = mode,
         heading = heading,
         isAmbient = isAmbient,
         eyebrow = if (isFavourite) "★ SAVED" else null,
@@ -299,13 +289,13 @@ private fun DockPage(
 /**
  * The dock you are riding to.
  *
- * Distinguished from the passing docks by its eyebrow and by the fact that its space count is the
- * one we watch on your behalf — turning amber and then raspberry as it fills.
+ * Distinguished from the passing docks by its eyebrow, which names what it is for and turns amber
+ * and then raspberry as the figure that matters runs out — bikes for a pick-up, spaces for a
+ * drop-off. Once it is failing, the card also names the nearest dock that would not.
  */
 @Composable
 private fun PinnedPage(
     state: DestinationState,
-    mode: RideMode,
     heading: () -> Float,
     isAmbient: Boolean,
     onOpenActions: () -> Unit
@@ -317,14 +307,21 @@ private fun PinnedPage(
     }
     DockCard(
         dock = ranked,
-        mode = mode,
         heading = heading,
         isAmbient = isAmbient,
-        eyebrow = when (state.health) {
-            DestinationHealth.CRITICAL -> "DESTINATION · ${mode.exhaustedLabel}"
-            DestinationHealth.TIGHT -> "DESTINATION · FILLING"
-            else -> "DESTINATION"
+        eyebrow = run {
+            val purpose = state.destination.purpose
+            val base = when (purpose) {
+                Purpose.PICK_UP -> "BIKE PICK-UP"
+                Purpose.DROP_OFF -> "DESTINATION"
+            }
+            when (state.health) {
+                DestinationHealth.CRITICAL -> "$base · ${purpose.exhaustedLabel}"
+                DestinationHealth.TIGHT -> "$base · ${purpose.lowLabel}"
+                else -> base
+            }
         },
+        footer = state.alternative?.let { "TRY ${it.name.shortName()} · ${formatDistance(it.distanceMetres)}" },
         eyebrowColor = when (state.health) {
             DestinationHealth.CRITICAL -> Palette.Raspberry
             DestinationHealth.TIGHT -> Palette.Amber
@@ -337,20 +334,23 @@ private fun PinnedPage(
 @Composable
 private fun DockCard(
     dock: RankedDock,
-    mode: RideMode,
     heading: () -> Float,
     isAmbient: Boolean,
     eyebrow: String?,
     eyebrowColor: Color,
-    onOpenActions: () -> Unit
+    onOpenActions: () -> Unit,
+    /** One line under the counts, for the destination's suggested alternative. */
+    footer: String? = null
 ) {
-    val countColor = countColor(dock.count)
+    val availability = dock.dock.availability
+    // A dock with neither a bike to take nor a space to leave one is no use to anybody.
+    val isDeadEnd = availability != null && availability.bikes <= 0 && availability.emptyDocks <= 0
 
     // The spoken direction has eight buckets, so it changes eight times per turn of the wrist —
     // not fifty times a second. derivedStateOf is what keeps the accessibility node (and this
     // composable) from churning on every sample for a string that has not changed.
-    val spoken by remember(dock, mode) {
-        derivedStateOf { dock.describe(mode, dock.bearingDegrees - heading()) }
+    val spoken by remember(dock) {
+        derivedStateOf { dock.describe(dock.bearingDegrees - heading()) }
     }
 
     Box(
@@ -364,11 +364,11 @@ private fun DockCard(
             rotation = { dock.bearingDegrees - heading() },
             tint = when {
                 isAmbient -> Palette.Chalk
-                dock.isUsable -> null
                 // A dock you cannot use still deserves an arrow, just not an inviting one.
-                else -> Palette.Dim
+                isDeadEnd -> Palette.Dim
+                else -> null
             },
-            dimmed = !dock.isUsable
+            dimmed = isDeadEnd
         )
 
         Column(
@@ -396,15 +396,16 @@ private fun DockCard(
                     color = Palette.Muted,
                     maxLines = 2
                 )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = when (val count = dock.count) {
-                        null -> "NO LIVE DATA"
-                        else -> if (count <= 0) mode.exhaustedLabel else "$count ${mode.label}"
-                    },
-                    style = MicroLabel,
-                    color = countColor
-                )
+                Spacer(modifier = Modifier.height(6.dp))
+                if (availability == null) {
+                    Text(text = "NO LIVE DATA", style = MicroLabel, color = Palette.Muted)
+                } else {
+                    Counts(availability)
+                }
+                if (footer != null) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(text = footer, style = MicroLabel, color = Palette.Amber, maxLines = 1)
+                }
             }
         }
     }
@@ -433,23 +434,30 @@ private fun CompassArrow(rotation: () -> Float, tint: Color?, dimmed: Boolean) {
     )
 }
 
+/**
+ * Bikes, e-bikes and spaces side by side.
+ *
+ * All three at once, so whether you are after a bike or somewhere to leave one, the answer is
+ * already on the card — no mode to remember to switch on a wrist while riding.
+ */
 @Composable
-private fun ModeChip(mode: RideMode, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Box(
-        modifier = modifier
-            // The painted pill stays small; the hit target around it does not.
-            .size(width = 96.dp, height = 32.dp)
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center
-    ) {
-        Box(
-            modifier = Modifier
-                .border(1.dp, Palette.Dim, CircleShape)
-                .background(Palette.Well, CircleShape)
-                .padding(horizontal = 12.dp, vertical = 4.dp)
-        ) {
-            Text(text = mode.label, style = MicroLabel, color = Palette.Chalk)
-        }
+private fun Counts(availability: Availability) {
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Count(availability.bikes, "BIKES")
+        Count(availability.eBikes, "E-BIKES")
+        Count(availability.emptyDocks, "SPACES")
+    }
+}
+
+@Composable
+private fun Count(count: Int, label: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            text = count.toString(),
+            style = MaterialTheme.typography.title3.copy(fontWeight = FontWeight.Bold),
+            color = countColor(count)
+        )
+        Text(text = label, style = MicroLabel, color = Palette.Muted)
     }
 }
 
@@ -504,8 +512,10 @@ private fun DockActions(
     dock: RankedDock,
     isFavourite: Boolean,
     isDestination: Boolean,
+    alternative: RankedDock?,
     onFavourite: () -> Unit,
-    onPin: () -> Unit,
+    onPin: (Purpose) -> Unit,
+    onSwitch: () -> Unit,
     onUnpin: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -516,10 +526,14 @@ private fun DockActions(
             .clickable(onClick = onDismiss),
         contentAlignment = Alignment.Center
     ) {
+        // Scrolls because a failing destination has four actions, and a small round screen does
+        // not fit four chips and a title.
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(6.dp),
-            modifier = Modifier.padding(horizontal = 16.dp)
+            modifier = Modifier
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 28.dp)
         ) {
             Text(
                 text = dock.name,
@@ -528,21 +542,44 @@ private fun DockActions(
                 textAlign = TextAlign.Center,
                 maxLines = 2
             )
+            if (alternative != null) {
+                Chip(
+                    label = { Text("Switch to ${alternative.name.shortName()}", maxLines = 1) },
+                    onClick = onSwitch,
+                    colors = ChipDefaults.primaryChipColors(),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+            if (isDestination) {
+                Chip(
+                    label = { Text("Unpin") },
+                    onClick = onUnpin,
+                    colors = ChipDefaults.secondaryChipColors(),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            } else {
+                // On foot for a bike, or on a bike for a space: each watches a different figure.
+                Purpose.entries.forEach { purpose ->
+                    Chip(
+                        label = { Text(purpose.action) },
+                        onClick = { onPin(purpose) },
+                        colors = ChipDefaults.primaryChipColors(),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
             Chip(
                 label = { Text(if (isFavourite) "Saved ★" else "Save dock") },
                 onClick = onFavourite,
                 colors = ChipDefaults.secondaryChipColors(),
                 modifier = Modifier.fillMaxWidth()
             )
-            Chip(
-                label = { Text(if (isDestination) "Unpin" else "Ride here") },
-                onClick = if (isDestination) onUnpin else onPin,
-                colors = ChipDefaults.primaryChipColors(),
-                modifier = Modifier.fillMaxWidth()
-            )
         }
     }
 }
+
+/** Dock names are long and a watch is narrow; the street is the part that locates it. */
+private fun String.shortName(): String = substringBefore(',').trim()
 
 /**
  * The way in, and — when the platform has stopped listening — the way out.
@@ -609,14 +646,8 @@ private fun countColor(count: Int?): Color = Color(Brand.availabilityColour(coun
  * Screen reader users get the direction relative to the way they are facing — "ahead and to your
  * right" — because an absolute bearing is no use to anyone who cannot see the arrow.
  */
-internal fun RankedDock.describe(mode: RideMode, relativeBearing: Float): String {
-    // Bound to a local because Kotlin will not smart-cast a val declared in another module.
-    val available = count
-    val availability = when {
-        available == null -> "availability unknown"
-        available <= 0 -> mode.exhaustedLabel.lowercase()
-        else -> mode.describe(available)
-    }
+internal fun RankedDock.describe(relativeBearing: Float): String {
+    val availability = dock.availability?.describeAll() ?: "availability unknown"
     return "$name, ${formatDistance(distanceMetres)} ${relativeBearing.asSpokenDirection()}, $availability"
 }
 
