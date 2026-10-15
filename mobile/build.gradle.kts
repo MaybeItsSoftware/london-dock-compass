@@ -32,6 +32,10 @@ android {
         targetSdk = 36
         versionCode = 104000
         versionName = "1.4.0"
+        // CI (Tramline) passes -PversionCode/-PversionName; local builds keep the literals above,
+        // which scripts/set-gradle-version.sh and the Fastfile still read and rewrite.
+        project.findProperty("versionCode")?.toString()?.let { versionCode = it.toInt() }
+        project.findProperty("versionName")?.toString()?.let { versionName = it }
     }
 
     signingConfigs {
