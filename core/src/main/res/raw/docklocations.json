@@ -3017,20 +3017,6 @@
       "temporary": false
     }
   ],
-  "gcpv58b": [
-    {
-      "id": 225,
-      "name": "Notting Hill Gate Station, Notting Hill",
-      "terminalName": 1182,
-      "lat": 51.509353,
-      "long": -0.196422,
-      "installed": true,
-      "locked": false,
-      "installDate": 1279616280000,
-      "removalDate": null,
-      "temporary": false
-    }
-  ],
   "gcpvhbz": [
     {
       "id": 226,
@@ -4973,20 +4959,6 @@
       "installed": true,
       "locked": false,
       "installDate": 1296125400000,
-      "removalDate": null,
-      "temporary": false
-    }
-  ],
-  "gcpvhfv": [
-    {
-      "id": 381,
-      "name": "Charlotte Street, Fitzrovia",
-      "terminalName": 2669,
-      "lat": 51.51953,
-      "long": -0.135777,
-      "installed": true,
-      "locked": false,
-      "installDate": 1296203760000,
       "removalDate": null,
       "temporary": false
     }
