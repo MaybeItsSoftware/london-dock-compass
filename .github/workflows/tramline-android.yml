@@ -1,0 +1,97 @@
+name: Tramline · Android
+
+# Triggered by Tramline. Builds the signed PHONE bundle (:mobile) at the version Tramline
+# hands over and uploads it as a single artifact; Tramline pushes it to Play itself.
+# The Wear bundle (:app) lives on the wear:* form-factor tracks and still ships through
+# deploy.yml / `fastlane android beta`.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tramline-input:
+        description: "JSON from Tramline (version_name, version_code, commit_ref, build_notes)"
+        required: false
+        default: "{}"
+
+concurrency:
+  group: tramline-android-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Configure Tramline
+        id: tramline
+        uses: tramlinehq/deploy-action@v0.1.7
+        with:
+          input: ${{ github.event.inputs.tramline-input }}
+
+      - name: Require Tramline version
+        env:
+          VERSION_NAME: ${{ steps.tramline.outputs.version_name }}
+          VERSION_CODE: ${{ steps.tramline.outputs.version_code }}
+        run: |
+          if [ -z "$VERSION_NAME" ] || [ -z "$VERSION_CODE" ]; then
+            echo "::error::No version_name/version_code in tramline-input — this workflow is meant to be triggered by Tramline."; exit 1
+          fi
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # The release signingConfig silently no-ops when keystore.properties is missing, so
+      # fail loudly here instead of shipping an unsigned bundle.
+      - name: Decode signing keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          for v in ANDROID_KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            if [ -z "${!v}" ]; then echo "::error::Secret $v is not set"; exit 1; fi
+          done
+          KEYSTORE_PATH="$RUNNER_TEMP/upload-keystore.jks"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
+          {
+            echo "storeFile=$KEYSTORE_PATH"
+            echo "storePassword=$KEYSTORE_PASSWORD"
+            echo "keyAlias=$KEY_ALIAS"
+            echo "keyPassword=$KEY_PASSWORD"
+          } > keystore.properties
+
+      - name: Build signed phone bundle
+        env:
+          VERSION_NAME: ${{ steps.tramline.outputs.version_name }}
+          VERSION_CODE: ${{ steps.tramline.outputs.version_code }}
+        run: ./gradlew :mobile:bundleRelease -PversionCode="$VERSION_CODE" -PversionName="$VERSION_NAME"
+
+      - name: Verify bundle is release-signed
+        run: |
+          AAB=mobile/build/outputs/bundle/release/mobile-release.aab
+          test -f "$AAB" || { echo "::error::$AAB not found"; exit 1; }
+          # jarsigner exits 0 on an UNSIGNED jar ("jar is unsigned."), so check the text.
+          if ! jarsigner -verify "$AAB" 2>&1 | grep -q "^jar verified"; then
+            echo "::error::$AAB is not signed — refusing to hand an unsigned bundle to Tramline"; exit 1
+          fi
+          if jarsigner -verify -verbose -certs "$AAB" | grep -q "CN=Android Debug"; then
+            echo "::error::$AAB is debug-signed"; exit 1
+          fi
+
+      - name: Upload bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: london-dock-compass-${{ steps.tramline.outputs.version_name }}-${{ steps.tramline.outputs.version_code }}
+          path: mobile/build/outputs/bundle/release/mobile-release.aab
+          retention-days: 7
+          if-no-files-found: error
