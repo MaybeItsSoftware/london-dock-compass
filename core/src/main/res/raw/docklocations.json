@@ -1543,20 +1543,6 @@
       "temporary": false
     }
   ],
-  "gcpvhcc": [
-    {
-      "id": 116,
-      "name": "Little Argyll Street, West End",
-      "terminalName": 995,
-      "lat": 51.514499,
-      "long": -0.141423,
-      "installed": true,
-      "locked": false,
-      "installDate": 1279122360000,
-      "removalDate": null,
-      "temporary": false
-    }
-  ],
   "gcpuvmu": [
     {
       "id": 117,
@@ -3647,20 +3633,6 @@
       "installed": true,
       "locked": false,
       "installDate": 1279714740000,
-      "removalDate": null,
-      "temporary": false
-    }
-  ],
-  "gcpuuwp": [
-    {
-      "id": 268,
-      "name": "Belgrave Road, Victoria",
-      "terminalName": 1087,
-      "lat": 51.493204,
-      "long": -0.144132,
-      "installed": true,
-      "locked": false,
-      "installDate": 1279714920000,
       "removalDate": null,
       "temporary": false
     }
