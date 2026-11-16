@@ -1057,20 +1057,6 @@
       "temporary": false
     }
   ],
-  "gcpvj3m": [
-    {
-      "id": 79,
-      "name": "Arundel Street, Temple",
-      "terminalName": 3455,
-      "lat": 51.511726,
-      "long": -0.113855,
-      "installed": true,
-      "locked": false,
-      "installDate": 1509018360000,
-      "removalDate": null,
-      "temporary": false
-    }
-  ],
   "gcpuvxm": [
     {
       "id": 80,
@@ -1429,6 +1415,18 @@
       "installDate": 1279106880000,
       "removalDate": null,
       "temporary": false
+    },
+    {
+      "id": 301,
+      "name": "Marylebone Lane, Marylebone",
+      "terminalName": 1152,
+      "lat": 51.514759,
+      "long": -0.148105,
+      "installed": true,
+      "locked": false,
+      "installDate": 1279809000000,
+      "removalDate": null,
+      "temporary": false
     }
   ],
   "gcpvju1": [
@@ -1599,20 +1597,6 @@
       "temporary": false
     }
   ],
-  "gcpvjfh": [
-    {
-      "id": 120,
-      "name": "The Guildhall, Guildhall",
-      "terminalName": 1044,
-      "lat": 51.515735,
-      "long": -0.09308,
-      "installed": true,
-      "locked": false,
-      "installDate": 1279187040000,
-      "removalDate": null,
-      "temporary": false
-    }
-  ],
   "gcpvh6w": [
     {
       "id": 121,
@@ -1665,34 +1649,6 @@
       "installed": true,
       "locked": false,
       "installDate": 1279192200000,
-      "removalDate": null,
-      "temporary": false
-    }
-  ],
-  "gcpvjf9": [
-    {
-      "id": 126,
-      "name": "Museum of London, Barbican",
-      "terminalName": 1043,
-      "lat": 51.517821,
-      "long": -0.096496,
-      "installed": true,
-      "locked": false,
-      "installDate": 1279193340000,
-      "removalDate": null,
-      "temporary": false
-    }
-  ],
-  "gcpvjf7": [
-    {
-      "id": 127,
-      "name": "Wood Street, Guildhall",
-      "terminalName": 1063,
-      "lat": 51.517008,
-      "long": -0.093885,
-      "installed": true,
-      "locked": false,
-      "installDate": 1279193520000,
       "removalDate": null,
       "temporary": false
     }
@@ -1805,20 +1761,6 @@
       "installed": true,
       "locked": false,
       "installDate": 1279201080000,
-      "removalDate": null,
-      "temporary": false
-    }
-  ],
-  "gcpvjc3": [
-    {
-      "id": 136,
-      "name": "Queen Victoria Street, St. Paul's",
-      "terminalName": 1048,
-      "lat": 51.511961,
-      "long": -0.097441,
-      "installed": true,
-      "locked": false,
-      "installDate": 1279201200000,
       "removalDate": null,
       "temporary": false
     }
@@ -3651,20 +3593,6 @@
       "temporary": false
     }
   ],
-  "gcpuuwp": [
-    {
-      "id": 268,
-      "name": "Belgrave Road, Victoria",
-      "terminalName": 1087,
-      "lat": 51.493204,
-      "long": -0.144132,
-      "installed": true,
-      "locked": false,
-      "installDate": 1279714920000,
-      "removalDate": null,
-      "temporary": false
-    }
-  ],
   "gcpuvzq": [
     {
       "id": 269,
@@ -5421,20 +5349,6 @@
       "installed": true,
       "locked": false,
       "installDate": 1310463720000,
-      "removalDate": null,
-      "temporary": false
-    }
-  ],
-  "gcpvjcu": [
-    {
-      "id": 427,
-      "name": "Cheapside, Bank",
-      "terminalName": 22180,
-      "lat": 51.51397,
-      "long": -0.09294,
-      "installed": true,
-      "locked": false,
-      "installDate": 1310725680000,
       "removalDate": null,
       "temporary": false
     }
@@ -9955,18 +9869,6 @@
       "installDate": 1396262520000,
       "removalDate": null,
       "temporary": false
-    },
-    {
-      "id": 842,
-      "name": "Temple Gardens, Temple",
-      "terminalName": 300250,
-      "lat": 51.510981,
-      "long": -0.108322,
-      "installed": true,
-      "locked": false,
-      "installDate": 1600856400000,
-      "removalDate": null,
-      "temporary": false
     }
   ],
   "gcpug3f": [
@@ -10049,20 +9951,6 @@
       "installed": true,
       "locked": false,
       "installDate": 1446485820000,
-      "removalDate": null,
-      "temporary": false
-    }
-  ],
-  "gcpvpw8": [
-    {
-      "id": 783,
-      "name": "Monier Road, Hackney Wick",
-      "terminalName": 300213,
-      "lat": 51.540311,
-      "long": -0.02163,
-      "installed": true,
-      "locked": false,
-      "installDate": 1448529660000,
       "removalDate": null,
       "temporary": false
     }
@@ -10830,20 +10718,6 @@
       "terminalName": 200081,
       "lat": 51.48357,
       "long": -0.202038,
-      "installed": true,
-      "locked": false,
-      "installDate": null,
-      "removalDate": null,
-      "temporary": false
-    }
-  ],
-  "gcpvj3s": [
-    {
-      "id": 857,
-      "name": "Strand, Strand",
-      "terminalName": 1100,
-      "lat": 51.512582,
-      "long": -0.115057,
       "installed": true,
       "locked": false,
       "installDate": null,
